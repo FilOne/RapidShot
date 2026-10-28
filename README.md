@@ -1,93 +1,80 @@
 # RapidShot
 
+Нативный скриншотер для Windows 10/11, C# / .NET 10 / WinForms. Запускается в системном трее; редактор — обычное изменяемое окно.
 
+## Запуск
 
-## Getting started
+Для создания переносимой сборки запустите **`./build.ps1 -Portable`** в PowerShell на Windows с установленным .NET SDK 10. Результат: **`dist/RapidShot/RapidShot.exe`**. Каталог `dist` генерируется локально и не хранится в Git. Установка .NET на компьютере, где запускается переносимый EXE, не требуется; права администратора не нужны.
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+1. Запустите `RapidShot.exe`. Значок появится в трее (возможно, в меню скрытых значков).
+2. Нажмите **Ctrl + Shift + S** и выделите область мышью. Отпустите кнопку — откроется редактор. **Esc** или правая кнопка мыши отменяют захват.
+3. Выберите инструмент снизу. Все параметры — цвет, толщина, прозрачность, размер текста, наконечники и обрезка — находятся в нижнем ряду под инструментами.
+4. Сохраните PNG/JPEG, скопируйте изображение в буфер или нажмите **«Загрузить на Yapx»**.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+Двойной щелчок по значку трея делает новый снимок. Меню правой кнопки позволяет снять все экраны, открыть существующее изображение, изменить настройки, открыть папку снимков или выйти. Закрытие редактора оставляет приложение в трее. Одновременно запускается один экземпляр.
 
-## Add your files
+## Редактор
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+Стартовый размер рабочей области окна — 920 × 580 px. Окно можно уменьшать дальше или растягивать; изображение автоматически вписывается. Инструменты расположены горизонтально под снимком: название и горячая клавиша показываются при наведении на кнопку.
 
+Последняя нарисованная пометка остаётся активной. Изменяйте её параметры сразу: например, переключатель «Один / Два» меняет наконечники существующей стрелки на месте. Цвет, толщина, прозрачность, сила размытия и размер текста также применяются к активной пометке. В строке инструментов отображается её название с пометкой «выбрана». Esc снимает выделение; следующий рисунок становится новой активной пометкой. Для старой пометки используйте «Выбор / перенос»: нижний ряд покажет параметры её исходного инструмента. Переключение на её инструмент создания сохраняет выделение. Отмена и повтор правок сохраняют связь с редактируемой пометкой.
+
+Похожие инструменты объединены в группы: **рисование** (карандаш, линия, стрелка), **фигуры** (прямоугольник, эллипс), **обработка** (размытие, ластик). Удерживайте кнопку примерно полсекунды, чтобы открыть список; короткий щелчок выбирает последний использованный инструмент группы. Список также открывается правой кнопкой мыши или клавишей ↓ при фокусе на кнопке. Маленький треугольник обозначает группу. Горячие клавиши выбирают инструмент напрямую.
+
+| Инструмент | Клавиша | Действие |
+| --- | --- | --- |
+| Выбор / перенос | V | Выбрать пометку, переместить, изменить её цвет/толщину; двойной щелчок по тексту — редактировать |
+| Карандаш | P | Свободное рисование |
+| Прямоугольник | R | Рамка выбранного цвета |
+| Эллипс | O | Овал или круг |
+| Стрелка | A | Стрелка с одним или двумя наконечниками; переключатель «Один / Два» снизу меняет активную стрелку |
+| Линия | L | Прямая линия |
+| Текст | T | Ввести текст прямо в точке щелчка на снимке; щелчок по существующей надписи открывает её для редактирования |
+| Размытие | B | Выделить прямоугольную область; ползунок «Размытие» снизу задаёт силу эффекта |
+| Ластик | E | Нажать/провести по пометке, чтобы удалить её целиком |
+| Обрезка | C | Перетянуть край или угловой маркер снимка, затем нажать Enter или «Обрезать» |
+
+- **Ctrl + Z** — отменить; **Ctrl + Shift + Z** / **Ctrl + Y** — повторить.
+- **Ctrl + S** — сохранить; **Ctrl + C** — скопировать изображение.
+- **Delete** — удалить выбранную пометку; **Esc** — сбросить выделение/текущий жест.
+- Размер текста задаётся в пикселях в нижнем ряду; поле показывается только при работе с инструментом **«Текст»**. Двойной щелчок по надписи открывает её и активирует этот инструмент.
+- Ползунки **«Толщина»** (1–32 px) и **«Прозрачность»** (0–100 %) расположены рядом с инструментами снизу. Прозрачность 0 % означает непрозрачную линию, 100 % — полностью прозрачную. Эти настройки применяются к карандашу, линиям, стрелкам и контурам фигур, включая выбранные пометки. Цвет меняется независимо от прозрачности. Одно перетягивание ползунка отменяется одним действием Ctrl+Z. В режиме размытия показывается только ползунок силы эффекта.
+- В режиме обрезки можно двигать любую из четырёх границ или угол. Рамку можно поправлять до подтверждения; Esc или «Сбросить» возвращают её к текущему размеру снимка. Двойной щелчок внутри рамки также применяет обрезку. Переход на другой инструмент, сохранение, копирование и загрузка применяют подготовленную рамку. Ctrl+Z сначала отменяет неподтверждённую рамку; после применения восстанавливает прежний размер снимка.
+- При вводе текста **Enter** завершает редактирование, **Shift + Enter** добавляет новую строку, **Esc** отменяет правку. Щелчок вне поля тоже завершает ввод. Перед сохранением, копированием или загрузкой текущая надпись фиксируется автоматически. Удаление всего текста удаляет надпись; это можно отменить через Ctrl+Z. Во время ввода Ctrl+C и Ctrl+Z работают с текстовым полем.
+- Обрезка и пометки не изменяют исходные пиксели. Отмена доступна для последних 60 действий. В экспорт попадает только результат редактирования без рамок и панелей интерфейса.
+- Если снимок ещё не сохранён/скопирован/загружен, закрытие редактора предложит сохранить его.
+
+## Настройки
+
+В меню трея откройте «Настройки…». Выберите основную клавишу и модификаторы Ctrl/Alt/Shift/Win, тип захвата и папку сохранения. Поддерживаются одиночные клавиши, включая Print Screen, и сочетания. Если сочетание занято Windows или другой программой, приложение сообщает об этом и сохраняет прежнюю привязку. Print Screen может быть занят системным инструментом Windows; в этом случае выберите другое сочетание.
+
+Настройки находятся в `%APPDATA%/RapidShot/settings.json`. Снимки по умолчанию предлагается сохранять в `Изображения/RapidShot`. Автозапуск Windows программа не включает.
+
+## Загрузка на Yapx
+
+В редакторе есть одна кнопка **«Загрузить на Yapx»**. Она отправляет текущий результат с пометками и обрезкой напрямую, без ключа и без открытия браузера. После успешной загрузки ссылка копируется в буфер и появляется в окне результата. При ошибке снимок остаётся в редакторе. До нажатия кнопки сетевых запросов нет.
+
+Используется гостевая загрузка: открытие формы → создание альбома → отправка PNG. Проверяются гостевой лимит 3 МБ и размер 10000 × 10000 px, указанные в конфигурации загрузчика на момент реализации. Загрузка зависит от текущего веб-интерфейса Yapx. Отменить отправку можно той же кнопкой.
+
+**Проверка 28.10.2026:** Yapx успешно загрузил синтетическое изображение 32 × 32 и вернул рабочую публичную ссылку. Протокол загрузки, разбор ссылок, ограничения и отмена покрыты локальными проверками.
+
+## Разработка и сборка
+
+Требуется .NET SDK 10 на Windows. Сторонних NuGet-зависимостей нет.
+
+```powershell
+dotnet run --project src/RapidShot
+dotnet run --project src/RapidShot -- --demo
+dotnet run --project src/RapidShot -- --settings
+dotnet run --project tests/RapidShot.Tests -c Release
+dotnet run --project tests/RapidShot.Tests -c Release -- --render
+./build.ps1 -Portable
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/whitehillteam/rapidshot.git
-git branch -M main
-git push -uf origin main
-```
 
-## Integrate with your tools
+`--demo` открывает редактор с синтетическим примером. `--settings` открывает настройки при запуске. При обычном запуске окон нет. Параметры применяются только при запуске первого экземпляра; закройте запущенную программу через меню трея перед запуском другого режима.
 
-* [Set up project integrations](https://gitlab.com/whitehillteam/rapidshot/-/settings/integrations)
+`build.ps1 -Portable` собирает и проверяет программу, затем создаёт переносимый EXE для Windows x64 с включённым .NET. Без `-Portable` создаёт сборку для установленного .NET Desktop Runtime 10. `--render` создаёт изображения интерфейса и проверяет жесты холста без ввода на рабочем столе пользователя. Опциональный тест `--network` отправляет на Yapx **синтетический квадрат 32 × 32**, а не снимок экрана.
 
-## Collaborate with your team
+Структура: `Document.cs` — пометки, история и экспорт; `EditorCanvas.cs` — координаты и жесты; `EditorForm.cs` — редактор; `CaptureService.cs` — захват; `TrayApplication.cs` — жизненный цикл; `NativeMethods.cs` — глобальная клавиша; `YapxClient.cs` — загрузка и проверка ссылок Yapx; `ImageClipboard.cs` — копирование изображения.
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Захват всех мониторов и отрицательные координаты поддержаны в коде. Разные DPI на нескольких физических мониторах требуют дополнительной ручной проверки. Защищённые приложения и экраны UAC могут не захватываться стандартным Windows API.
