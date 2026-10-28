@@ -12,7 +12,8 @@ internal sealed partial class EditorCanvas : Control
         set
         {
             if (tool == value) return;
-            CommitText(); dragging = false; Capture = false; pending = null;
+            CommitText(); FinishObjectTransform(); dragging = false; Capture = false; pending = null;
+            lastPenStrokeAt = 0;
             tool = value; cropDraft = value == EditorTool.Crop ? Document.Crop : null;
             cropDragEdge = CropEdge.None; CropStateChanged?.Invoke(); Invalidate();
         }
@@ -20,6 +21,10 @@ internal sealed partial class EditorCanvas : Control
     private EditorTool tool = EditorTool.Pen;
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public bool DoubleHeaded { get; set; }
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool RecognizeShapes { get => recognizeShapes; set { recognizeShapes = value; lastPenStrokeAt = 0; } }
+    private bool recognizeShapes = true;
+    private long lastPenStrokeAt;
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Color Ink { get; set; } = Color.FromArgb(255, 88, 100);
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -35,7 +40,7 @@ internal sealed partial class EditorCanvas : Control
     private Bitmap? preview;
     private Annotation? pending;
     private PointF anchor, last;
-    private bool dragging, changedMove, erased;
+    private bool dragging, erased;
     private float zoom = 1;
     private RectangleF imageBounds;
     private InlineTextBox? textEditor;
@@ -53,7 +58,8 @@ internal sealed partial class EditorCanvas : Control
     }
     public void Rebuild()
     {
-        preview?.Dispose(); preview = Document.Render(textOriginal);
+        lastPenStrokeAt = 0;
+        previewDirty = true;
         if (Tool == EditorTool.Crop) cropDraft = Document.Crop;
         var previous = Selected;
         if (Selected != null && !Document.Items.Contains(Selected) && Selected != textDraft) Selected = Document.Items.FirstOrDefault(x => x.Id == Selected.Id);
@@ -72,6 +78,7 @@ internal sealed partial class EditorCanvas : Control
     public void ClearSelection() { Selected = null; SelectionChanged?.Invoke(); Invalidate(); }
     public void DeleteSelected()
     {
+        FinishObjectTransform();
         CommitText();
         if (Selected == null) return;
         Document.BeginChange(); Document.Items.Remove(Selected); Selected = null; Document.NotifyChanged(); SelectionChanged?.Invoke();
@@ -93,20 +100,21 @@ internal sealed partial class EditorCanvas : Control
     }
     private void UpdateViewLayout()
     {
-        if (preview == null) return;
-        zoom = Math.Min((ClientSize.Width - 32f) / preview.Width, (ClientSize.Height - 52f) / preview.Height);
+        var size = Document.Crop.Size;
+        zoom = Math.Min((ClientSize.Width - 32f) / size.Width, (ClientSize.Height - 52f) / size.Height);
         zoom = Math.Max(0.01f, Math.Min(zoom, 2));
-        imageBounds = new((ClientSize.Width - preview.Width * zoom) / 2, (ClientSize.Height - 22 - preview.Height * zoom) / 2, preview.Width * zoom, preview.Height * zoom);
+        imageBounds = new((ClientSize.Width - size.Width * zoom) / 2, (ClientSize.Height - 22 - size.Height * zoom) / 2, size.Width * zoom, size.Height * zoom);
     }
     protected override void OnResize(EventArgs e)
     {
-        base.OnResize(e); UpdateViewLayout(); PositionTextEditor(); Invalidate();
+        base.OnResize(e); previewDirty = true; ClearTransformPreview(); UpdateViewLayout(); PositionTextEditor(); Invalidate();
     }
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        if (preview == null) return;
         UpdateViewLayout();
+        EnsurePreview();
+        if (preview == null) return;
         var g = e.Graphics;
         using var shadow = new SolidBrush(Color.FromArgb(12, 14, 20));
         g.FillRectangle(shadow, imageBounds.X + 7, imageBounds.Y + 9, imageBounds.Width, imageBounds.Height);
@@ -125,12 +133,8 @@ internal sealed partial class EditorCanvas : Control
             }
             else pending.Draw(g);
         }
-        if (Selected != null && Tool != EditorTool.Crop)
-        {
-            using var border = new Pen(Theme.Accent, 1.5f / zoom) { DashStyle = DashStyle.Dash };
-            var b = Selected.SelectionBounds; g.DrawRectangle(border, b.X, b.Y, b.Width, b.Height);
-        }
         g.Restore(state);
+        DrawObjectSelection(g);
         DrawCropOverlay(g);
         TextRenderer.DrawText(g, $"{Document.Crop.Width} × {Document.Crop.Height} px   ·   {zoom:P0}", Font, new Point((int)imageBounds.X, (int)imageBounds.Bottom + 9), Theme.Muted);
     }
@@ -141,6 +145,7 @@ internal sealed partial class EditorCanvas : Control
         base.OnMouseDown(e); Focus();
         if (e.Button != MouseButtons.Left) return;
         if (Tool == EditorTool.Crop) { StartCropDrag(e); return; }
+        if (!IsEditingText && StartHandleDrag(e)) return;
         if (!imageBounds.Contains(e.Location)) return;
         var p = ToImage(e.Location); anchor = last = p;
         if (Tool == EditorTool.Text)
@@ -153,10 +158,12 @@ internal sealed partial class EditorCanvas : Control
             dragging = false; Capture = false; BeginText(p, existing);
             return;
         }
-        dragging = true; Capture = true; changedMove = false; erased = false;
+        dragging = true; Capture = true; erased = false;
         if (Tool == EditorTool.Select)
         {
-            Selected = Find(p); SelectionChanged?.Invoke(); Invalidate(); return;
+            Selected = Find(p); SelectionChanged?.Invoke();
+            if (Selected != null) StartObjectTransform(ObjectHandle.Move, p);
+            Invalidate(); return;
         }
         ClearSelection();
         if (Tool == EditorTool.Eraser) { Erase(p); return; }
@@ -264,16 +271,14 @@ internal sealed partial class EditorCanvas : Control
     {
         base.OnMouseMove(e);
         if (Tool == EditorTool.Crop) { MoveCropDrag(e); return; }
-        Cursor = Tool == EditorTool.Select ? Cursors.SizeAll : Tool == EditorTool.Text ? Cursors.IBeam : Cursors.Cross;
+        var handle = IsEditingText ? ObjectHandle.None : HitObjectHandle(e.Location);
+        Cursor = ObjectCursor(transformOriginal != null ? transformHandle : handle);
+        if (transformOriginal == null && handle == ObjectHandle.None)
+            Cursor = Tool == EditorTool.Select ? (Find(ToImage(e.Location)) != null ? Cursors.SizeAll : Cursors.Default) : Tool == EditorTool.Text ? Cursors.IBeam : Cursors.Cross;
         if (!dragging) return;
         var p = ToImage(e.Location);
+        if (transformOriginal != null) { MoveObjectTransform(p); return; }
         if (Tool == EditorTool.Eraser) { Erase(p); return; }
-        if (Tool == EditorTool.Select && Selected != null)
-        {
-            if (Math.Abs(p.X - last.X) + Math.Abs(p.Y - last.Y) < 0.1f) return;
-            if (!changedMove) { Document.BeginChange(); changedMove = true; }
-            Selected.Offset(p.X - last.X, p.Y - last.Y); last = p; Document.NotifyChanged(); return;
-        }
         if (pending == null) return;
         pending.End = p;
         if (Tool == EditorTool.Pen && (Math.Abs(p.X - last.X) + Math.Abs(p.Y - last.Y) > 0.6f)) { pending.Points.Add(p); last = p; }
@@ -285,6 +290,7 @@ internal sealed partial class EditorCanvas : Control
         base.OnMouseUp(e);
         if (Tool == EditorTool.Crop) { EndCropDrag(e); return; }
         if (!dragging || e.Button != MouseButtons.Left) return;
+        if (transformOriginal != null) { MoveObjectTransform(ToImage(e.Location)); FinishObjectTransform(); return; }
         // Include the release point, even if Windows coalesced the final move event.
         if (pending != null) { pending.End = ToImage(e.Location); if (Tool == EditorTool.Pen) pending.Points.Add(pending.End); }
         dragging = false; Capture = false;
@@ -293,14 +299,27 @@ internal sealed partial class EditorCanvas : Control
         {
             if (item.Tool == EditorTool.Pen || Math.Abs(item.Start.X - item.End.X) + Math.Abs(item.Start.Y - item.End.Y) > 3)
             {
-                Selected = item; Document.Add(item); SelectionChanged?.Invoke();
+                var recognized = item.Tool == EditorTool.Pen && RecognizeShapes
+                    ? FreehandRecognizer.Recognize(item, Environment.TickCount64 - lastPenStrokeAt < 4000 ? Document.Items : []) : null;
+                Selected = recognized?.Item ?? item;
+                if (recognized is { PreviousStrokes: > 0 })
+                {
+                    Document.BeginChange(); Document.Items.RemoveRange(Document.Items.Count - recognized.PreviousStrokes, recognized.PreviousStrokes);
+                    Document.Items.Add(Selected); Document.NotifyChanged();
+                }
+                else Document.Add(Selected);
+                lastPenStrokeAt = item.Tool == EditorTool.Pen && RecognizeShapes && recognized == null ? Environment.TickCount64 : 0;
+                SelectionChanged?.Invoke();
+                if (recognized != null) HintChanged?.Invoke(recognized.Item.Tool == EditorTool.Arrow ? "Рисунок преобразован в стрелку. Параметры и концы можно редактировать." : "Замкнутый контур преобразован в круг. Размер можно менять за маркеры.");
             }
         }
         Invalidate();
     }
     public void CancelGesture(bool clearSelection = true)
     {
+        lastPenStrokeAt = 0;
         CancelText();
+        FinishObjectTransform();
         CancelCrop();
         pending = null; dragging = false; Capture = false;
         if (clearSelection) ClearSelection(); Invalidate();
@@ -308,11 +327,11 @@ internal sealed partial class EditorCanvas : Control
     protected override void OnMouseCaptureChanged(EventArgs e)
     {
         base.OnMouseCaptureChanged(e);
-        if (!Capture && dragging) { dragging = false; cropDragEdge = CropEdge.None; pending = null; Invalidate(); }
+        if (!Capture && dragging) { FinishObjectTransform(); dragging = false; cropDragEdge = CropEdge.None; pending = null; Invalidate(); }
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { CloseTextEditor(); Document.Changed -= Rebuild; preview?.Dispose(); }
+        if (disposing) { CloseTextEditor(); Document.Changed -= Rebuild; preview?.Dispose(); ClearTransformPreview(); }
         base.Dispose(disposing);
     }
 }

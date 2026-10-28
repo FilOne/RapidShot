@@ -70,6 +70,7 @@ internal static class Program
             for (var y = 0; y < output.Height; y++) for (var x = 0; x < output.Width; x++) if (output.GetPixel(x, y).G > 100) pixels++;
             Check(pixels > 100, $"Экспорт инструмента {tool}");
         }
+        BlurTests.Run(Check);
         await YapxTests.Run(Check);
         Check(AppSettings.FormatHotkey(6, Keys.S) == "Ctrl + Shift + S", "Формат горячей клавиши");
         using (var first = new HotkeyWindow())
@@ -151,6 +152,8 @@ internal static class Program
         CropAndToolTests.Run(Check, output);
         StyleControlsTests.Run(Check, output);
         LiveAnnotationTests.Run(Check, output);
+        TransformTests.Run(Check, output);
+        FreehandTests.Run(Check, output);
         Console.WriteLine($"Проверок интерфейса пройдено: {checks}");
         Console.WriteLine("UI preview: " + output);
     }

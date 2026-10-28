@@ -1,6 +1,7 @@
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using System.Buffers;
 
 namespace RapidShot;
 
@@ -20,6 +21,8 @@ public sealed class Annotation
     public PointF End { get; set; }
     public List<PointF> Points { get; set; } = [];
     public RectangleF Bounds => RectangleF.FromLTRB(Math.Min(Start.X, End.X), Math.Min(Start.Y, End.Y), Math.Max(Start.X, End.X), Math.Max(Start.Y, End.Y));
+    public RectangleF GeometryBounds => Tool == EditorTool.Pen && Points.Count > 0
+        ? RectangleF.FromLTRB(Points.Min(p => p.X), Points.Min(p => p.Y), Points.Max(p => p.X), Points.Max(p => p.Y)) : Bounds;
     public Annotation Clone() => new() { Id = Id, Tool = Tool, Color = Color, Width = Width, FontSize = FontSize, Opacity = Opacity, Text = Text, DoubleHeaded = DoubleHeaded, Start = Start, End = End, Points = [.. Points] };
     public static bool IsStrokeTool(EditorTool tool) => tool is EditorTool.Pen or EditorTool.Line or EditorTool.Arrow or EditorTool.Rectangle or EditorTool.Ellipse;
     public void Offset(float dx, float dy)
@@ -32,8 +35,7 @@ public sealed class Annotation
     {
         get
         {
-            var result = Tool == EditorTool.Pen && Points.Count > 0
-                ? RectangleF.FromLTRB(Points.Min(p => p.X), Points.Min(p => p.Y), Points.Max(p => p.X), Points.Max(p => p.Y)) : Bounds;
+            var result = GeometryBounds;
             result.Inflate(Width / 2 + 3, Width / 2 + 3);
             return result;
         }
@@ -122,28 +124,44 @@ public sealed class ScreenshotDocument : IDisposable
     private void Restore(Snapshot state) { Crop = state.Crop; Items = state.Items.Select(x => x.Clone()).ToList(); NotifyChanged(); }
     public Bitmap Render(Annotation? excluded = null)
     {
-        // Render only the visible crop; all annotation coordinates stay in the original space.
-        var result = new Bitmap(Crop.Width, Crop.Height, PixelFormat.Format32bppArgb);
-        using (var g = Graphics.FromImage(result)) g.DrawImage(Original, new Rectangle(Point.Empty, Crop.Size), Crop, GraphicsUnit.Pixel);
-        foreach (var item in Items)
+        return RenderPreview(Crop.Size, excluded);
+    }
+    // Editor previews use the viewport resolution. Export always uses the original crop size.
+    internal Bitmap RenderPreview(Size size, Annotation? excluded = null, int endIndex = int.MaxValue)
+    {
+        var result = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(result))
         {
+            if (size != Crop.Size) g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.DrawImage(Original, new Rectangle(Point.Empty, size), Crop, GraphicsUnit.Pixel);
+        }
+        DrawItems(result, 0, excluded, endIndex);
+        return result;
+    }
+    internal void DrawItems(Bitmap result, int startIndex, Annotation? excluded = null, int endIndex = int.MaxValue)
+    {
+        var sx = result.Width / (float)Crop.Width; var sy = result.Height / (float)Crop.Height;
+        for (var i = startIndex; i < Math.Min(Items.Count, endIndex); i++)
+        {
+            var item = Items[i];
             if (ReferenceEquals(item, excluded)) continue;
             if (item.Tool == EditorTool.Blur)
             {
-                var r = Rectangle.Round(item.Bounds);
-                r.Offset(-Crop.X, -Crop.Y);
-                ImageBlur.Apply(result, r, Math.Clamp((int)item.Width * 3, 8, 64));
+                var b = item.Bounds;
+                var r = Rectangle.Round(new RectangleF((b.X - Crop.X) * sx, (b.Y - Crop.Y) * sy, b.Width * sx, b.Height * sy));
+                var radius = Math.Max(1, (int)Math.Round(Math.Clamp((int)item.Width * 3, 8, 64) * Math.Min(sx, sy)));
+                ImageBlur.Apply(result, r, radius);
             }
             else
             {
                 using var g = Graphics.FromImage(result);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                g.ScaleTransform(sx, sy);
                 g.TranslateTransform(-Crop.X, -Crop.Y);
                 item.Draw(g);
             }
         }
-        return result;
     }
     public void Dispose() => Original.Dispose();
 }
@@ -155,11 +173,12 @@ internal static class ImageBlur
         region.Intersect(new Rectangle(Point.Empty, image.Size));
         if (region.Width < 1 || region.Height < 1) return;
         var data = image.LockBits(region, ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+        var count = checked(region.Width * region.Height * 4);
+        var source = ArrayPool<byte>.Shared.Rent(count);
+        var target = ArrayPool<byte>.Shared.Rent(count);
         try
         {
             int w = region.Width, h = region.Height;
-            var source = new byte[w * h * 4];
-            var target = new byte[source.Length];
             for (var y = 0; y < h; y++) Marshal.Copy(data.Scan0 + y * data.Stride, source, y * w * 4, w * 4);
             // Three separable box passes approximate a Gaussian blur in linear time.
             for (var pass = 0; pass < 3; pass++)
@@ -169,22 +188,35 @@ internal static class ImageBlur
             }
             for (var y = 0; y < h; y++) Marshal.Copy(source, y * w * 4, data.Scan0 + y * data.Stride, w * 4);
         }
-        finally { image.UnlockBits(data); }
+        finally
+        {
+            image.UnlockBits(data);
+            ArrayPool<byte>.Shared.Return(source); ArrayPool<byte>.Shared.Return(target);
+        }
     }
     private static void Box(byte[] input, byte[] output, int w, int h, int radius, bool horizontal)
     {
         int lines = horizontal ? h : w, length = horizontal ? w : h;
+        var step = horizontal ? 4 : w * 4;
+        var divisor = radius * 2 + 1;
         for (var line = 0; line < lines; line++)
-        for (var channel = 0; channel < 4; channel++)
         {
-            int Index(int p) => (horizontal ? line * w + p : p * w + line) * 4 + channel;
-            var sum = 0;
-            for (var i = -radius; i <= radius; i++) sum += input[Index(Math.Clamp(i, 0, length - 1))];
+            var offset = horizontal ? line * w * 4 : line * 4;
+            int b = 0, g = 0, r = 0, a = 0;
+            for (var i = -radius; i <= radius; i++)
+            {
+                var index = offset + Math.Clamp(i, 0, length - 1) * step;
+                b += input[index]; g += input[index + 1]; r += input[index + 2]; a += input[index + 3];
+            }
             for (var p = 0; p < length; p++)
             {
-                output[Index(p)] = (byte)(sum / (radius * 2 + 1));
-                sum -= input[Index(Math.Clamp(p - radius, 0, length - 1))];
-                sum += input[Index(Math.Clamp(p + radius + 1, 0, length - 1))];
+                var index = offset + p * step;
+                output[index] = (byte)(b / divisor); output[index + 1] = (byte)(g / divisor);
+                output[index + 2] = (byte)(r / divisor); output[index + 3] = (byte)(a / divisor);
+                var remove = offset + Math.Clamp(p - radius, 0, length - 1) * step;
+                var add = offset + Math.Clamp(p + radius + 1, 0, length - 1) * step;
+                b += input[add] - input[remove]; g += input[add + 1] - input[remove + 1];
+                r += input[add + 2] - input[remove + 2]; a += input[add + 3] - input[remove + 3];
             }
         }
     }

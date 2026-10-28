@@ -17,6 +17,7 @@ internal sealed class EditorForm : Form
     private readonly FlowLayoutPanel parameterBar, strokeControls, colorControls, arrowEnds, cropControls;
     private readonly Panel transparencyControl, fontControls, arrowControls;
     private readonly RadioButton arrowOne, arrowTwo;
+    private readonly CheckBox recognizeShapes;
     private readonly Button applyCrop, resetCrop;
     private readonly TableLayoutPanel workspace;
     private readonly ToolTip tips = new();
@@ -104,6 +105,10 @@ internal sealed class EditorForm : Form
         fontSize = new NumericUpDown { Minimum = 10, Maximum = 160, Value = 28, BackColor = Theme.Raised, ForeColor = Theme.Foreground, AccessibleName = "Размер текста" };
         fontSize.ValueChanged += (_, _) => { canvas.TextSize = (float)fontSize.Value; if (!updatingStyle) canvas.UpdateSelectedStyle(); };
         fontControls = ParameterBox("Текст, px", fontSize, 104, out _); parameterBar.Controls.Add(fontControls);
+        recognizeShapes = new CheckBox { Text = "Ровные фигуры", Checked = true, Width = 150, Height = 36, Margin = new Padding(8, 0, 4, 0), ForeColor = Theme.Foreground, AccessibleName = "Распознавать круги и стрелки" };
+        recognizeShapes.CheckedChanged += (_, _) => canvas.RecognizeShapes = recognizeShapes.Checked;
+        tips.SetToolTip(recognizeShapes, "Ручка: замкнутый круг и набросок стрелки превращаются в редактируемые фигуры после отпускания мыши.");
+        parameterBar.Controls.Add(recognizeShapes);
         cropControls = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty, AccessibleName = "Параметры обрезки" };
         cropControls.Controls.Add(new Label { Text = "Потяните край или угол снимка", Width = 220, Height = 32, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Theme.Muted, Margin = new Padding(4, 2, 4, 2) });
         applyCrop = Theme.Button("Обрезать ↵", (_, _) => canvas.CommitCrop(), true); resetCrop = Theme.Button("Сбросить · Esc", (_, _) => canvas.CancelCrop());
@@ -169,6 +174,7 @@ internal sealed class EditorForm : Form
         fontControls.Visible = !cropping && canvas.Tool == EditorTool.Text;
         var strokes = Annotation.IsStrokeTool(context);
         strokeControls.Visible = !cropping && (strokes || context == EditorTool.Blur); transparencyControl.Visible = strokes;
+        recognizeShapes.Visible = !cropping && canvas.Tool == EditorTool.Pen;
         UpdateSliderLabels(); applyCrop.Enabled = resetCrop.Enabled = canvas.HasCropChanges;
         delete.Enabled = canvas.Selected != null && uploading == null;
         activeItem.Text = canvas.Selected is { } selected ? $"{toolNames[selected.Tool]} · выбрана" : $"Инструмент: {toolNames[canvas.Tool]}";
@@ -183,11 +189,12 @@ internal sealed class EditorForm : Form
         canvas.ActivateTool(tool); HighlightTool(tool); UpdatePropertyVisibility();
         status.Text = tool switch
         {
-            EditorTool.Select => "Перетащите пометку. Двойной щелчок по тексту — редактировать.",
+            EditorTool.Select => "Перетащите объект или маркер размера. Двойной щелчок по тексту — редактировать.",
             EditorTool.Text => "Щелчок — ввод или редактирование текста. Enter — готово, Shift+Enter — новая строка.",
             EditorTool.Eraser => "Нажмите или проведите по пометке, чтобы удалить её целиком.",
             EditorTool.Crop => "Потяните край или угол снимка. Enter — обрезать, Esc — сбросить.",
-            EditorTool.Blur => "Выделите область для размытия. Сила — ползунком снизу.",
+            EditorTool.Blur => "Выделите область для размытия. Маркеры меняют размер, ползунок снизу — силу эффекта.",
+            EditorTool.Pen => "Рисуйте: замкнутый круг или стрелка выравниваются при отпускании мыши. Маркеры меняют размер.",
             _ => "Параметры снизу изменяют активную пометку. Esc — снять выделение."
         };
     }
