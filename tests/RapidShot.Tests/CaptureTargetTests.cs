@@ -63,7 +63,7 @@ internal static class CaptureTargetTests
         Console.WriteLine($"Подключено экранов: {displays.Length}. Проверка размеров снимков в памяти, без сохранения пикселей.");
         foreach (var display in displays)
         {
-            using var image = CaptureService.Capture(false, display.DeviceName);
+            using var image = CaptureService.Capture(display.DeviceName);
             check(image?.Size == display.Bounds.Size, $"Снимок {display.Label} имеет размер именно этого монитора");
         }
     }

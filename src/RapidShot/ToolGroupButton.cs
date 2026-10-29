@@ -63,8 +63,9 @@ internal sealed class ToolGroupButton : IconButton
     {
         base.OnPaint(e);
         if (definitions.Length < 2) return;
-        using var brush = new SolidBrush(ForeColor);
-        e.Graphics.FillPolygon(brush, [new Point(Width - 7, Height - 3), new(Width - 3, Height - 3), new(Width - 3, Height - 7)]);
+        using var pen = new System.Drawing.Pen(Enabled ? Theme.Muted : Theme.Disabled, 1) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round };
+        // Keep the group indicator inside the button, away from its rounded corner.
+        e.Graphics.DrawLines(pen, [new Point(Width - 11, Height - 9), new(Width - 9, Height - 7), new(Width - 7, Height - 9)]);
     }
     protected override void Dispose(bool disposing)
     {

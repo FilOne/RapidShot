@@ -110,6 +110,14 @@ public sealed class ScreenshotDocument : IDisposable
     public bool CanRedo => redo.Count > 0;
     public event Action? Changed;
     public ScreenshotDocument(Bitmap bitmap) { Original = bitmap; Crop = new(Point.Empty, bitmap.Size); }
+    internal void SetCaptureRegion(Rectangle rectangle)
+    {
+        if (CanUndo || CanRedo || Items.Count != 0) throw new InvalidOperationException("Область захвата задаётся до редактирования.");
+        rectangle.Intersect(new Rectangle(Point.Empty, Original.Size));
+        if (rectangle.Width < 2 || rectangle.Height < 2) throw new ArgumentOutOfRangeException(nameof(rectangle));
+        // Establish the initial capture, without an undo step exposing the whole desktop.
+        Crop = rectangle; NotifyChanged();
+    }
     private Snapshot State() => new(Crop, Items.Select(x => x.Clone()).ToList(), NextPinNumber);
     public void BeginChange()
     {

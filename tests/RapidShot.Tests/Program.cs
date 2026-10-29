@@ -172,6 +172,8 @@ internal static class Program
         CaptureTargetTests.Run(Check, output);
         BlurCreationTests.Run(Check);
         MinimalInterfaceTests.Run(Check);
+        RegionCaptureTests.Run(Check, output);
+        ButtonRenderingTests.Run(Check, output);
         Console.WriteLine($"Проверок интерфейса пройдено: {checks}");
         Console.WriteLine("UI preview: " + output);
     }

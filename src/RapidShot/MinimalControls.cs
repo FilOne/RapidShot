@@ -25,17 +25,26 @@ internal class IconButton : Button
     protected override void OnMouseLeave(EventArgs e) { hovered = pressed = false; Invalidate(); base.OnMouseLeave(e); }
     protected override void OnMouseDown(MouseEventArgs e) { pressed = e.Button == MouseButtons.Left; Invalidate(); base.OnMouseDown(e); }
     protected override void OnMouseUp(MouseEventArgs e) { pressed = false; Invalidate(); base.OnMouseUp(e); }
+    protected override void OnPaintBackground(PaintEventArgs e)
+    {
+        // Paint every pixel, including the corners outside the rounded button.
+        // The native flat-button background/focus border can leave light pixels there.
+        e.Graphics.Clear(Parent?.BackColor is { A: 255 } background ? background : Theme.Panel);
+    }
     protected override void OnPaint(PaintEventArgs e)
     {
-        var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
+        var g = e.Graphics;
+        // ButtonBase may skip OnPaintBackground for WM_PRINTCLIENT. Clear here
+        // as well so native repaints and bitmap rendering produce opaque corners.
+        g.Clear(Parent?.BackColor is { A: 255 } background ? background : Theme.Panel);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
         using var path = FloatingBar.Rounded(new RectangleF(1, 1, Width - 2, Height - 2), 5);
         using var fill = new SolidBrush(pressed ? Theme.Raised : hovered || selected ? Color.FromArgb(66, 71, 78) : BackColor); g.FillPath(fill, path);
-        if (selected) { using var outline = new Pen(Theme.Accent, 1); g.DrawPath(outline, path); }
+        if (selected || Focused && ShowFocusCues) { using var outline = new Pen(Theme.Accent, 1); g.DrawPath(outline, path); }
         var color = Enabled ? ForeColor : Theme.Disabled;
         var iconX = ShowText ? 8 : (Width - 20f) / 2;
         UiGlyph.Draw(g, Symbol, new(iconX, (Height - 20f) / 2, 20, 20), color, FlatAppearance.BorderColor);
         if (ShowText) TextRenderer.DrawText(g, Text, Font, new Rectangle(33, 0, Width - 36, Height), color, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
-        if (Focused && ShowFocusCues) ControlPaint.DrawFocusRectangle(g, new Rectangle(3, 3, Width - 6, Height - 6), color, BackColor);
     }
 }
 
@@ -54,10 +63,20 @@ internal sealed class FloatingBar : FlowLayoutPanel
         p.AddArc(box.Left, box.Top, diameter, diameter, 180, 90); p.AddArc(box.Right - diameter, box.Top, diameter, diameter, 270, 90);
         p.AddArc(box.Right - diameter, box.Bottom - diameter, diameter, diameter, 0, 90); p.AddArc(box.Left, box.Bottom - diameter, diameter, diameter, 90, 90); p.CloseFigure(); return p;
     }
-    protected override void OnSizeChanged(EventArgs e)
+    protected override void OnPaintBackground(PaintEventArgs e)
     {
-        base.OnSizeChanged(e);
-        using var path = Rounded(ClientRectangle, 9); var old = Region; Region = new Region(path); old?.Dispose();
+        // A native window Region has hard, un-antialiased edges. Blend the rounded
+        // panel into its real parent instead, also when floating over the desktop.
+        if (Parent is { } parent)
+        {
+            var state = e.Graphics.Save(); e.Graphics.TranslateTransform(-Left, -Top);
+            using var args = new PaintEventArgs(e.Graphics, new Rectangle(Location, Size));
+            InvokePaintBackground(parent, args); InvokePaint(parent, args); e.Graphics.Restore(state);
+        }
+        else e.Graphics.Clear(Theme.Background);
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using var path = Rounded(new RectangleF(.5f, .5f, Width - 1, Height - 1), 8);
+        using var fill = new SolidBrush(BackColor); e.Graphics.FillPath(fill, path);
     }
     protected override void OnPaint(PaintEventArgs e)
     {

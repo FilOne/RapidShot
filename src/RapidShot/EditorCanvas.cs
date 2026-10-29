@@ -105,6 +105,7 @@ internal sealed partial class EditorCanvas : Control
     }
     private void UpdateViewLayout()
     {
+        if (desktopCoordinates) { zoom = 1; imageBounds = Document.Crop; return; }
         var size = Document.Crop.Size;
         zoom = Math.Min((ClientSize.Width - 32f) / size.Width, (ClientSize.Height - 52f) / size.Height);
         zoom = Math.Max(0.01f, Math.Min(zoom, 2));
@@ -121,8 +122,12 @@ internal sealed partial class EditorCanvas : Control
         EnsurePreview();
         if (preview == null) return;
         var g = e.Graphics;
-        using var shadow = new SolidBrush(Color.FromArgb(12, 14, 20));
-        g.FillRectangle(shadow, imageBounds.X + 7, imageBounds.Y + 9, imageBounds.Width, imageBounds.Height);
+        if (desktopCoordinates) g.DrawImageUnscaled(desktopBackdrop!, Point.Empty);
+        else
+        {
+            using var shadow = new SolidBrush(Color.FromArgb(12, 14, 20));
+            g.FillRectangle(shadow, imageBounds.X + 7, imageBounds.Y + 9, imageBounds.Width, imageBounds.Height);
+        }
         if (preview.Width == (int)Math.Round(imageBounds.Width) && preview.Height == (int)Math.Round(imageBounds.Height))
             g.DrawImageUnscaled(preview, Point.Round(imageBounds.Location));
         else
@@ -146,7 +151,11 @@ internal sealed partial class EditorCanvas : Control
         g.Restore(state);
         DrawObjectSelection(g);
         DrawCropOverlay(g);
-        TextRenderer.DrawText(g, $"{Document.Crop.Width} × {Document.Crop.Height} px   ·   {zoom:P0}", Font, new Point((int)imageBounds.X, (int)imageBounds.Bottom + 9), Theme.Muted);
+        if (desktopCoordinates)
+        {
+            if (Tool != EditorTool.Crop) SelectionFrame.Draw(g, imageBounds);
+        }
+        else TextRenderer.DrawText(g, $"{Document.Crop.Width} × {Document.Crop.Height} px   ·   {zoom:P0}", Font, new Point((int)imageBounds.X, (int)imageBounds.Bottom + 9), Theme.Muted);
     }
     private PointF ToImage(Point point) => new(Math.Clamp((point.X - imageBounds.X) / zoom + Document.Crop.X, Document.Crop.Left, Document.Crop.Right), Math.Clamp((point.Y - imageBounds.Y) / zoom + Document.Crop.Y, Document.Crop.Top, Document.Crop.Bottom));
     private Annotation? Find(PointF point) => Document.Items.LastOrDefault(x => x.HitTest(point, 5 / zoom));
@@ -354,7 +363,7 @@ internal sealed partial class EditorCanvas : Control
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { blurHintTimer.Dispose(); CloseTextEditor(); Document.Changed -= Rebuild; preview?.Dispose(); ClearTransformPreview(); }
+        if (disposing) { blurHintTimer.Dispose(); CloseTextEditor(); Document.Changed -= Rebuild; preview?.Dispose(); desktopBackdrop?.Dispose(); ClearTransformPreview(); }
         base.Dispose(disposing);
     }
 }

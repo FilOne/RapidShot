@@ -4,7 +4,7 @@ using System.Numerics;
 
 namespace RapidShot;
 
-internal sealed class EditorForm : Form
+internal sealed partial class EditorForm : Form
 {
     private readonly ScreenshotDocument document;
     private readonly EditorCanvas canvas;
@@ -33,7 +33,7 @@ internal sealed class EditorForm : Form
     private bool sliderUndoRecorded, exported, updatingStyle;
     private CancellationTokenSource? uploading;
 
-    public EditorForm(Bitmap image, AppSettings settings)
+    public EditorForm(Bitmap image, AppSettings settings, Rectangle? regionBounds = null)
     {
         this.settings = settings; document = new(image);
         Theme.Apply(this); Font = new Font("Segoe UI", 9.5f);
@@ -42,7 +42,7 @@ internal sealed class EditorForm : Form
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 4, ColumnCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
         root.RowStyles.Add(new(SizeType.Percent, 100)); root.RowStyles.Add(new(SizeType.Absolute, 52)); root.RowStyles.Add(new(SizeType.Absolute, 56)); root.RowStyles.Add(new(SizeType.Absolute, 20));
         root.ColumnStyles.Add(new(SizeType.Percent, 100));
-        save = new IconButton(UiIcon.Save, "Сохранить"); save.Click += (_, _) => SaveImage(); tips.SetToolTip(save, "Сохранить PNG или JPEG · Ctrl+S");
+        save = new IconButton(UiIcon.Save, "Сохранить"); save.Click += (_, _) => SaveAndFinish(); tips.SetToolTip(save, "Сохранить PNG или JPEG · Ctrl+S");
         copy = new IconButton(UiIcon.Copy, "В буфер"); copy.Click += (_, _) => CopyImage(); tips.SetToolTip(copy, "Скопировать изображение · Ctrl+C");
         upload = new IconButton(UiIcon.Upload, "Загрузить на Yapx"); upload.Click += async (_, _) => await Upload();
         upload.AccessibleName = "Загрузить на Yapx"; tips.SetToolTip(upload, "Загрузить снимок на Yapx и получить ссылку");
@@ -142,15 +142,16 @@ internal sealed class EditorForm : Form
         document.Changed += () => { exported = false; UpdateHistory(); UpdatePropertyVisibility(); };
         UpdateHistory(); SelectTool(EditorTool.Pen); FormClosing += ClosingEditor;
         void FitBars() { toolBar.MaximumSize = new Size(Math.Max(300, ClientSize.Width - 24), 46); parameterBar.MaximumSize = new Size(Math.Max(300, ClientSize.Width - 24), 50); }
-        SizeChanged += (_, _) => FitBars(); FitBars();
+        SizeChanged += (_, _) => { if (!isRegionCapture) FitBars(); }; FitBars();
+        if (regionBounds.HasValue) InitializeRegionCapture(regionBounds.Value, root);
     }
     private static Control Separator() => new Panel { Width = 1, Height = 24, BackColor = Color.FromArgb(74, 78, 85), Margin = new Padding(6, 5, 6, 5) };
     private void ShowCaptureMenu()
     {
         foreach (var item in captureMenu.Items.Cast<ToolStripItem>().ToArray()) item.Dispose(); captureMenu.Items.Clear();
-        captureMenu.Items.Add("Снимок области", null, (_, _) => CaptureRequested?.Invoke(true, null));
-        captureMenu.Items.Add("Все экраны целиком", null, (_, _) => CaptureRequested?.Invoke(false, null));
-        captureMenu.Items.AddRange(CaptureTargets.MenuItems(CaptureTargets.GetDisplays(), device => CaptureRequested?.Invoke(false, device)));
+        captureMenu.Items.Add("Снимок области", null, (_, _) => RequestCapture(true, null));
+        captureMenu.Items.Add("Все экраны целиком", null, (_, _) => RequestCapture(false, null));
+        captureMenu.Items.AddRange(CaptureTargets.MenuItems(CaptureTargets.GetDisplays(), device => RequestCapture(false, device)));
         captureMenu.Show(capture, Point.Empty, ToolStripDropDownDirection.AboveRight);
     }
     private static Panel ParameterBox(string title, Control input, int width, out Label label)
@@ -284,6 +285,7 @@ internal sealed class EditorForm : Form
         }
         catch (Exception ex) { ShowError("Не удалось сохранить снимок", ex); return false; }
     }
+    private void SaveAndFinish() { if (SaveImage() && isRegionCapture) Close(); }
     private void CopyImage()
     {
         try
@@ -292,6 +294,7 @@ internal sealed class EditorForm : Form
             using var image = document.Render();
             ImageClipboard.Write(image);
             exported = true; status.Text = "Изображение скопировано в буфер обмена.";
+            if (isRegionCapture) Close();
         }
         catch (Exception ex) { ShowError("Не удалось скопировать снимок", ex); }
     }
@@ -300,6 +303,7 @@ internal sealed class EditorForm : Form
         if (uploading != null) { uploading.Cancel(); return; }
         CommitPinNumber(); canvas.CommitEdits();
         using var cancellation = new CancellationTokenSource(); uploading = cancellation;
+        var completed = false;
         canvas.Enabled = false; save.Enabled = copy.Enabled = upload.Enabled = capture.Enabled = false;
         foreach (var button in tools.Values.Distinct()) button.Enabled = false;
         parameterBar.Enabled = false; undo.Enabled = redo.Enabled = delete.Enabled = false;
@@ -310,6 +314,7 @@ internal sealed class EditorForm : Form
             using var client = new GoogleLensClient(); var url = await client.SearchAsync(bytes.ToArray(), image.Size, cancellation.Token);
             if (IsDisposed) return;
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+            completed = true;
             status.Text = "Результаты Google Lens открыты в браузере.";
         }
         catch (OperationCanceledException) { if (!IsDisposed) status.Text = cancellation.IsCancellationRequested ? "Поиск отменён." : "Google не ответил вовремя. Повторите поиск."; }
@@ -324,12 +329,14 @@ internal sealed class EditorForm : Form
                 parameterBar.Enabled = true; google.Symbol = UiIcon.Search; google.Invalidate(); UpdatePropertyVisibility(); UpdateHistory();
             }
         }
+        if (isRegionCapture && completed) { exported = true; Close(); }
     }
     private async Task Upload()
     {
         if (uploading != null) { uploading.Cancel(); return; }
         CommitPinNumber(); canvas.CommitEdits();
         using var cancellation = new CancellationTokenSource(); uploading = cancellation;
+        var completed = false;
         workspace.Enabled = false;
         canvas.Enabled = false; save.Enabled = copy.Enabled = false;
         foreach (var button in tools.Values.Distinct()) button.Enabled = false;
@@ -347,6 +354,7 @@ internal sealed class EditorForm : Form
             try { Clipboard.SetText(result.Url); status.Text = "Загружено. Ссылка скопирована в буфер обмена."; }
             catch { status.Text = "Загружено. Скопируйте ссылку из открывшегося окна."; }
             using var dialog = new UploadResultDialog(result); dialog.ShowDialog(this);
+            completed = true;
         }
         catch (OperationCanceledException) { if (!IsDisposed) status.Text = cancellation.IsCancellationRequested ? "Загрузка отменена." : "Сервер не ответил вовремя. Повторите попытку."; }
         catch (Exception ex) { if (!IsDisposed) ShowError("Не удалось загрузить снимок", ex); }
@@ -362,6 +370,7 @@ internal sealed class EditorForm : Form
                 parameterBar.Enabled = true; UpdatePropertyVisibility(); UpdateHistory();
             }
         }
+        if (isRegionCapture && completed) Close();
     }
     private void ShowError(string title, Exception error)
     {
@@ -370,6 +379,11 @@ internal sealed class EditorForm : Form
     }
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        if (isRegionCapture && !regionEditing)
+        {
+            if (keyData == Keys.Escape) Close();
+            return true;
+        }
         if (uploading != null) return base.ProcessCmdKey(ref msg, keyData);
         if (pinNumber.Focused)
         {
@@ -377,12 +391,17 @@ internal sealed class EditorForm : Form
             else return base.ProcessCmdKey(ref msg, keyData);
         }
         if (canvas.IsEditingText && canvas.ContainsFocus && keyData != (Keys.Control | Keys.S)) return base.ProcessCmdKey(ref msg, keyData);
-        if (keyData == (Keys.Control | Keys.S)) { SaveImage(); return true; }
+        if (keyData == (Keys.Control | Keys.S)) { SaveAndFinish(); return true; }
         if (keyData == (Keys.Control | Keys.C)) { CopyImage(); return true; }
         if (keyData == Keys.Enter && canvas.Tool == EditorTool.Crop) { canvas.CommitCrop(); return true; }
         if (keyData == (Keys.Control | Keys.Z)) { Undo(); return true; }
         if (keyData == (Keys.Control | Keys.Shift | Keys.Z) || keyData == (Keys.Control | Keys.Y)) { canvas.CommitText(); canvas.CancelGesture(false); document.Redo(); return true; }
-        if (keyData == Keys.Escape) { canvas.CancelGesture(); return true; }
+        if (keyData == Keys.Escape)
+        {
+            if (isRegionCapture && !canvas.HasCropChanges && canvas.Selected == null) Close();
+            else canvas.CancelGesture();
+            return true;
+        }
         if (ActiveControl is NumericUpDown || ActiveControl is TextBoxBase) return base.ProcessCmdKey(ref msg, keyData);
         if (keyData == Keys.Delete) { canvas.DeleteSelected(); return true; }
         var tool = keyData switch { Keys.V => EditorTool.Select, Keys.P => EditorTool.Pen, Keys.R => EditorTool.Rectangle, Keys.O => EditorTool.Ellipse, Keys.A => EditorTool.Arrow, Keys.L => EditorTool.Line, Keys.T => EditorTool.Text, Keys.N => EditorTool.Pin, Keys.B => EditorTool.Blur, Keys.E => EditorTool.Eraser, Keys.C => EditorTool.Crop, _ => (EditorTool?)null };
@@ -391,6 +410,7 @@ internal sealed class EditorForm : Form
     }
     private void ClosingEditor(object? sender, FormClosingEventArgs e)
     {
+        if (isRegionCapture && !regionEditing) return;
         if (uploading != null) { e.Cancel = true; uploading.Cancel(); return; }
         CommitPinNumber(); canvas.CommitEdits();
         if (exported) return;
