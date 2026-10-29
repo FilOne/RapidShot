@@ -1,6 +1,6 @@
 namespace RapidShot;
 
-internal static class FreehandRecognizer
+internal static partial class FreehandRecognizer
 {
     internal sealed record Result(Annotation Item, int PreviousStrokes);
     public static Result? Recognize(Annotation stroke, IReadOnlyList<Annotation> previous)
@@ -39,49 +39,6 @@ internal static class FreehandRecognizer
         var result = stroke.Clone(); result.Tool = EditorTool.Ellipse; result.Points.Clear();
         result.Start = new(center.X - radius, center.Y - radius); result.End = new(center.X + radius, center.Y + radius);
         return result;
-    }
-    private static Annotation? Arrow(IReadOnlyList<Annotation> strokes)
-    {
-        var paths = strokes.Select(x => Resample(x.Points)).Where(x => x.Count > 1).ToArray();
-        if (paths.Length != strokes.Count) return null;
-        var all = paths.SelectMany(x => x).ToArray();
-        var extent = Math.Max(all.Max(p => p.X) - all.Min(p => p.X), all.Max(p => p.Y) - all.Min(p => p.Y));
-        var segments = new List<(PointF A, PointF B)>();
-        foreach (var path in paths)
-        {
-            var simplified = Simplify(path, Math.Max(1.5f, extent * .035f));
-            for (var i = 1; i < simplified.Count; i++) segments.Add((simplified[i - 1], simplified[i]));
-        }
-        if (segments.Count is < 3 or > 14) return null;
-        var shaft = segments.MaxBy(s => Distance(s.A, s.B));
-        foreach (var (start, tip) in new[] { shaft, (shaft.B, shaft.A) })
-        {
-            var length = Distance(start, tip);
-            if (length < Math.Max(35, strokes[^1].Width * 6)) continue;
-            var ux = (tip.X - start.X) / length; var uy = (tip.Y - start.Y) / length;
-            var wings = new List<(PointF Point, float Along, float Side)>();
-            foreach (var (a, b) in segments)
-            {
-                PointF? wing = Distance(a, tip) < length * .09f ? b : Distance(b, tip) < length * .09f ? a : null;
-                if (!wing.HasValue) continue;
-                var dx = wing.Value.X - tip.X; var dy = wing.Value.Y - tip.Y;
-                var along = -(dx * ux + dy * uy); var side = dx * -uy + dy * ux;
-                if (along > length * .08f && along < length * .45f && Math.Abs(side) > length * .07f && Math.Abs(side) < length * .4f)
-                    wings.Add((wing.Value, along, side));
-            }
-            foreach (var first in wings.Where(w => w.Side > 0))
-            foreach (var second in wings.Where(w => w.Side < 0))
-            {
-                if (first.Along / second.Along is < .45f or > 2.2f || Math.Abs(first.Side / second.Side) is < .4f or > 2.5f) continue;
-                var tolerance = Math.Max(2.5f, length * .055f);
-                if (all.Any(p => Math.Min(SegmentDistance(p, start, tip), Math.Min(SegmentDistance(p, tip, first.Point), SegmentDistance(p, tip, second.Point))) > tolerance)) continue;
-                if (paths.Sum(Length) > length + (Distance(tip, first.Point) + Distance(tip, second.Point)) * 2.6f) continue;
-                var result = strokes[^1].Clone(); result.Tool = EditorTool.Arrow;
-                result.Start = start; result.End = tip; result.DoubleHeaded = false; result.Points.Clear();
-                return result;
-            }
-        }
-        return null;
     }
     private static List<PointF> Resample(IReadOnlyList<PointF> points)
     {

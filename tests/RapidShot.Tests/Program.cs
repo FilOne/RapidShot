@@ -154,6 +154,7 @@ internal static class Program
         LiveAnnotationTests.Run(Check, output);
         TransformTests.Run(Check, output);
         FreehandTests.Run(Check, output);
+        ArrowRecognitionTests.Run(Check, output);
         PinTests.Run(Check, output);
         PinNumberTests.Run(Check, output);
         Console.WriteLine($"Проверок интерфейса пройдено: {checks}");
