@@ -2,7 +2,7 @@ using System.Drawing.Drawing2D;
 
 namespace RapidShot;
 
-internal enum UiIcon { None, Select, Pen, Line, Arrow, Rectangle, Ellipse, Text, Blur, Eraser, Crop, Pin, Save, Copy, Upload, Search, Undo, Redo, Delete, Camera, Color, Cancel }
+internal enum UiIcon { None, Select, Pen, Line, Arrow, Rectangle, Ellipse, Text, Blur, Eraser, Crop, Pin, Save, Copy, Upload, Undo, Redo, Delete, Camera, Color, Cancel }
 
 internal class IconButton : Button
 {
@@ -118,7 +118,6 @@ internal static class UiGlyph
             case UiIcon.Save: Lines(new(3, 3), new(14, 3), new(17, 6), new(17, 17), new(3, 17), new(3, 3)); g.DrawRectangle(p, 6, 3, 7, 5); g.DrawRectangle(p, 6, 12, 8, 5); break;
             case UiIcon.Copy: g.DrawRectangle(p, 7, 7, 10, 10); Lines(new(4, 13), new(3, 13), new(3, 3), new(13, 3), new(13, 4)); break;
             case UiIcon.Upload: Lines(new(3, 12), new(3, 17), new(17, 17), new(17, 12)); Lines(new(6, 7), new(10, 3), new(14, 7)); g.DrawLine(p, 10, 3, 10, 13); break;
-            case UiIcon.Search: g.DrawEllipse(p, 3, 3, 10, 10); g.DrawLine(p, 12, 12, 17, 17); g.FillEllipse(brush, 6.5f, 6.5f, 3, 3); break;
             case UiIcon.Undo:
             case UiIcon.Redo:
                 if (icon == UiIcon.Redo) { g.TranslateTransform(20, 0); g.ScaleTransform(-1, 1); }

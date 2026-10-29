@@ -1,6 +1,5 @@
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Net;
 using RapidShot;
 
 internal static class Program
@@ -23,7 +22,6 @@ internal static class Program
             using var icon = Theme.CreateIcon(); using var stream = File.Create(Path.Combine(target, "RapidShot.ico")); icon.Save(stream);
             Console.WriteLine("Создан значок установщика: " + target); return;
         }
-        if (args.Contains("--google-network")) { await GoogleLensTests.RunNetwork(); return; }
         if (args.Contains("--blur-performance")) { BlurCreationTests.Run(Check); return; }
         if (args.Contains("--capture")) { CaptureTargetTests.RunNative(Check); return; }
         if (args.Contains("--render"))
@@ -81,7 +79,6 @@ internal static class Program
         }
         BlurTests.Run(Check);
         await YapxTests.Run(Check);
-        await GoogleLensTests.Run(Check);
         Check(AppSettings.FormatHotkey(6, Keys.S) == "Ctrl + Shift + S", "Формат горячей клавиши");
         using (var first = new HotkeyWindow())
         using (var second = new HotkeyWindow())

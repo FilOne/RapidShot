@@ -13,7 +13,6 @@ internal sealed partial class EditorForm : Form
     private readonly Button undo, redo, copy, delete, customColor;
     private readonly ToolStripMenuItem save, upload;
     private readonly CaptureSplitButton capture;
-    private readonly IconButton google;
     private readonly FloatingBar toolBar;
     private readonly ContextMenuStrip captureMenu = new(), colorMenu = new();
     private readonly Dictionary<EditorTool, ToolGroupButton> tools = [];
@@ -48,7 +47,6 @@ internal sealed partial class EditorForm : Form
         upload = new ToolStripMenuItem("Загрузить на Yapx") { AccessibleName = "Загрузить на Yapx", ImageScaling = ToolStripItemImageScaling.None }; upload.Click += async (_, _) => await Upload();
         SetMenuIcon(save, UiIcon.Save); SetMenuIcon(upload, UiIcon.Upload);
         captureMenu.Items.AddRange([save, upload]);
-        google = new IconButton(UiIcon.Search, "Поиск в Google"); google.Click += async (_, _) => await SearchGoogle(); tips.SetToolTip(google, "Поиск по снимку · Google Lens");
         workspace = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 1, Margin = Padding.Empty };
         workspace.ColumnStyles.Add(new(SizeType.Percent, 100));
         canvas = new(document) { Dock = DockStyle.Fill, Margin = Padding.Empty }; workspace.Controls.Add(canvas); root.Controls.Add(workspace);
@@ -57,7 +55,7 @@ internal sealed partial class EditorForm : Form
         capture.CopyRequested += CopyImage; capture.MenuRequested += ShowCaptureMenu;
         tips.SetToolTip(copy, "Захват — скопировать изображение в буфер · Ctrl+C");
         tips.SetToolTip(capture.MenuAction, "Сохранить снимок или загрузить на Yapx");
-        toolBar.Controls.AddRange([capture, google, Separator()]);
+        toolBar.Controls.AddRange([capture, Separator()]);
         ToolDefinition[][] groups = [
             [new(EditorTool.Select, "↖", "Выбор / перенос", "V")],
             [new(EditorTool.Pen, "✎", "Карандаш", "P"), new(EditorTool.Line, "╱", "Линия", "L"), new(EditorTool.Arrow, "↗", "Стрелка", "A")],
@@ -310,39 +308,6 @@ internal sealed partial class EditorForm : Form
         }
         catch (Exception ex) { ShowError("Не удалось скопировать снимок", ex); }
     }
-    private async Task SearchGoogle()
-    {
-        if (uploading != null) { uploading.Cancel(); return; }
-        CommitPinNumber(); canvas.CommitEdits();
-        using var cancellation = new CancellationTokenSource(); uploading = cancellation;
-        var completed = false;
-        canvas.SetInputEnabled(false); save.Enabled = copy.Enabled = upload.Enabled = capture.Enabled = false;
-        foreach (var button in tools.Values.Distinct()) button.Enabled = false;
-        parameterBar.Enabled = false; undo.Enabled = redo.Enabled = delete.Enabled = false;
-        google.Symbol = UiIcon.Cancel; google.Invalidate(); status.Text = "Поиск по снимку в Google Lens…";
-        try
-        {
-            using var image = document.Render(); using var bytes = new MemoryStream(); image.Save(bytes, ImageFormat.Png);
-            using var client = new GoogleLensClient(); var url = await client.SearchAsync(bytes.ToArray(), image.Size, cancellation.Token);
-            if (IsDisposed) return;
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
-            completed = true;
-            status.Text = "Результаты Google Lens открыты в браузере.";
-        }
-        catch (OperationCanceledException) { if (!IsDisposed) status.Text = cancellation.IsCancellationRequested ? "Поиск отменён." : "Google не ответил вовремя. Повторите поиск."; }
-        catch (Exception ex) { if (!IsDisposed) ShowError("Не удалось выполнить поиск в Google", ex); }
-        finally
-        {
-            uploading = null;
-            if (!IsDisposed)
-            {
-                canvas.SetInputEnabled(true); save.Enabled = copy.Enabled = upload.Enabled = capture.Enabled = true;
-                foreach (var button in tools.Values.Distinct()) button.Enabled = true;
-                parameterBar.Enabled = true; google.Symbol = UiIcon.Search; google.Invalidate(); UpdatePropertyVisibility(); UpdateHistory();
-            }
-        }
-        if (isRegionCapture && completed) { exported = true; Close(); }
-    }
     private async Task Upload()
     {
         if (uploading != null) { uploading.Cancel(); return; }
@@ -353,7 +318,7 @@ internal sealed partial class EditorForm : Form
         canvas.SetInputEnabled(false); save.Enabled = copy.Enabled = false;
         foreach (var button in tools.Values.Distinct()) button.Enabled = false;
         parameterBar.Enabled = false; delete.Enabled = false; undo.Enabled = redo.Enabled = false;
-        google.Enabled = false; upload.Text = "Отменить загрузку на Yapx"; SetMenuIcon(upload, UiIcon.Cancel); status.Text = "Загрузка изображения на Yapx…";
+        upload.Text = "Отменить загрузку на Yapx"; SetMenuIcon(upload, UiIcon.Cancel); status.Text = "Загрузка изображения на Yapx…";
         try
         {
             using var image = document.Render();
@@ -376,7 +341,7 @@ internal sealed partial class EditorForm : Form
             if (!IsDisposed)
             {
                 canvas.SetInputEnabled(true); save.Enabled = copy.Enabled = true;
-                upload.Text = "Загрузить на Yapx"; SetMenuIcon(upload, UiIcon.Upload); google.Enabled = capture.Enabled = true;
+                upload.Text = "Загрузить на Yapx"; SetMenuIcon(upload, UiIcon.Upload);
                 workspace.Enabled = true;
                 foreach (var button in tools.Values.Distinct()) button.Enabled = true;
                 parameterBar.Enabled = true; UpdatePropertyVisibility(); UpdateHistory();
