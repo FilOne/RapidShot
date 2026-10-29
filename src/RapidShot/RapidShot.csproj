@@ -9,6 +9,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>RapidShot</AssemblyName>
     <RootNamespace>RapidShot</RootNamespace>
-    <Version>1.14.0</Version>
+    <Version>1.15.0</Version>
+    <ApplicationIcon>..\..\installer\assets\RapidShot.ico</ApplicationIcon>
   </PropertyGroup>
 </Project>

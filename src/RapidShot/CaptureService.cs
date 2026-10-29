@@ -67,8 +67,7 @@ internal sealed class RegionOverlay : Form
         g.FillRegion(shade, region);
         if (!Selection.IsEmpty)
         {
-            using var pen = new Pen(Theme.Accent, 2) { DashStyle = DashStyle.Dash };
-            g.DrawRectangle(pen, Selection);
+            SelectionFrame.Draw(g, Selection);
         }
         // Place help on the monitor under the pointer, including negative monitor coordinates.
         NativeMethods.GetCursorPos(out var cursor);

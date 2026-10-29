@@ -2,7 +2,7 @@ namespace RapidShot;
 
 internal sealed record ToolDefinition(EditorTool Tool, string Icon, string Name, string Shortcut);
 
-internal sealed class ToolGroupButton : Button
+internal sealed class ToolGroupButton : IconButton
 {
     private readonly ToolDefinition[] definitions;
     private readonly ContextMenuStrip menu;
@@ -13,9 +13,9 @@ internal sealed class ToolGroupButton : Button
     public ToolGroupButton(params ToolDefinition[] definitions)
     {
         this.definitions = definitions;
-        AutoSize = false; Size = new(40, 32); Padding = Padding.Empty; Margin = new Padding(3, 2, 3, 2);
+        AutoSize = false; Size = new(34, 34); Padding = Padding.Empty; Margin = new Padding(1, 0, 1, 0);
         Font = new Font("Segoe UI", 14); FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0;
-        BackColor = Theme.Raised; ForeColor = Theme.Foreground; Cursor = Cursors.Hand;
+        BackColor = Theme.Panel; ForeColor = Theme.Foreground; Cursor = Cursors.Hand;
         FlatAppearance.MouseOverBackColor = Color.FromArgb(61, 68, 87);
         menu = new ContextMenuStrip { BackColor = Theme.Panel, ForeColor = Theme.Foreground, ShowImageMargin = false, ShowCheckMargin = true };
         foreach (var definition in definitions)
@@ -32,6 +32,7 @@ internal sealed class ToolGroupButton : Button
     {
         var definition = definitions.First(x => x.Tool == tool);
         CurrentTool = tool; Text = tool == EditorTool.Pin ? "" : definition.Icon; AccessibleName = definition.Name;
+        Symbol = UiGlyph.ForTool(tool);
         foreach (ToolStripMenuItem item in menu.Items) item.Checked = (EditorTool)item.Tag! == tool;
         Invalidate();
     }
@@ -61,12 +62,6 @@ internal sealed class ToolGroupButton : Button
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        if (CurrentTool == EditorTool.Pin)
-        {
-            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            var x = (Width - 18f) / 2; var y = (Height - 22.5f) / 2;
-            PinMarker.Draw(e.Graphics, new Annotation { Tool = EditorTool.Pin, PinNumber = 1, PinSize = 18, Color = ForeColor, Start = new(x, y), End = new(x + 18, y + 22.5f) });
-        }
         if (definitions.Length < 2) return;
         using var brush = new SolidBrush(ForeColor);
         e.Graphics.FillPolygon(brush, [new Point(Width - 7, Height - 3), new(Width - 3, Height - 3), new(Width - 3, Height - 7)]);

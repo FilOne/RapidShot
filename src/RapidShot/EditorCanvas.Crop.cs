@@ -97,15 +97,12 @@ internal sealed partial class EditorCanvas
         var r = CropScreenBounds;
         using var shaded = new Region(imageBounds); shaded.Exclude(r);
         using var shade = new SolidBrush(Color.FromArgb(155, 10, 14, 24)); g.FillRegion(shade, shaded);
-        using var border = new Pen(Theme.Accent, 1.5f); g.DrawRectangle(border, r.X, r.Y, r.Width, r.Height);
+        SelectionFrame.Draw(g, r);
         using var grid = new Pen(Color.FromArgb(110, Color.White), 1) { DashStyle = DashStyle.Dash };
-        for (var i = 1; i <= 2; i++)
+        for (var i = 1; dragging && i <= 2; i++)
         {
             g.DrawLine(grid, r.X + r.Width * i / 3, r.Top, r.X + r.Width * i / 3, r.Bottom);
             g.DrawLine(grid, r.Left, r.Y + r.Height * i / 3, r.Right, r.Y + r.Height * i / 3);
         }
-        using var handle = new SolidBrush(Theme.Foreground);
-        PointF[] points = [new(r.Left, r.Top), new(r.Right, r.Top), new(r.Right, r.Bottom), new(r.Left, r.Bottom), new(r.Left + r.Width / 2, r.Top), new(r.Left + r.Width / 2, r.Bottom), new(r.Left, r.Top + r.Height / 2), new(r.Right, r.Top + r.Height / 2)];
-        foreach (var point in points) { var box = new RectangleF(point.X - 4, point.Y - 4, 8, 8); g.FillRectangle(handle, box); g.DrawRectangle(border, box.X, box.Y, box.Width, box.Height); }
     }
 }

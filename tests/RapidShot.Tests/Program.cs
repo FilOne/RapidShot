@@ -17,6 +17,13 @@ internal static class Program
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        if (args.Contains("--package-assets"))
+        {
+            var target = Path.Combine(Directory.GetCurrentDirectory(), "installer", "assets"); Directory.CreateDirectory(target);
+            using var icon = Theme.CreateIcon(); using var stream = File.Create(Path.Combine(target, "RapidShot.ico")); icon.Save(stream);
+            Console.WriteLine("Создан значок установщика: " + target); return;
+        }
+        if (args.Contains("--google-network")) { await GoogleLensTests.RunNetwork(); return; }
         if (args.Contains("--blur-performance")) { BlurCreationTests.Run(Check); return; }
         if (args.Contains("--capture")) { CaptureTargetTests.RunNative(Check); return; }
         if (args.Contains("--render"))
@@ -74,6 +81,7 @@ internal static class Program
         }
         BlurTests.Run(Check);
         await YapxTests.Run(Check);
+        await GoogleLensTests.Run(Check);
         Check(AppSettings.FormatHotkey(6, Keys.S) == "Ctrl + Shift + S", "Формат горячей клавиши");
         using (var first = new HotkeyWindow())
         using (var second = new HotkeyWindow())
@@ -163,6 +171,7 @@ internal static class Program
         PinNumberTests.Run(Check, output);
         CaptureTargetTests.Run(Check, output);
         BlurCreationTests.Run(Check);
+        MinimalInterfaceTests.Run(Check);
         Console.WriteLine($"Проверок интерфейса пройдено: {checks}");
         Console.WriteLine("UI preview: " + output);
     }

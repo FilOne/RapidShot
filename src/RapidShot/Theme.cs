@@ -4,12 +4,13 @@ namespace RapidShot;
 
 internal static class Theme
 {
-    public static readonly Color Background = Color.FromArgb(23, 26, 34);
-    public static readonly Color Panel = Color.FromArgb(32, 36, 47);
-    public static readonly Color Raised = Color.FromArgb(44, 49, 63);
+    public static readonly Color Background = Color.FromArgb(24, 26, 30);
+    public static readonly Color Panel = Color.FromArgb(42, 45, 50);
+    public static readonly Color Raised = Color.FromArgb(55, 59, 65);
     public static readonly Color Foreground = Color.FromArgb(234, 238, 247);
-    public static readonly Color Muted = Color.FromArgb(150, 160, 181);
-    public static readonly Color Accent = Color.FromArgb(116, 214, 189);
+    public static readonly Color Muted = Color.FromArgb(151, 158, 168);
+    public static readonly Color Disabled = Color.FromArgb(103, 109, 118);
+    public static readonly Color Accent = Color.FromArgb(67, 190, 241);
     public static void Apply(Form form)
     {
         form.BackColor = Background; form.ForeColor = Foreground;

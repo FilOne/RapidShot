@@ -88,6 +88,7 @@ internal sealed class TrayApplication : ApplicationContext
         try
         {
             var editor = new EditorForm(image, settings);
+            editor.CaptureRequested += async (region, device) => await Capture(region, device);
             editors.Add(editor); editor.FormClosed += (_, _) => editors.Remove(editor);
             editor.Show(); editor.Activate();
         }

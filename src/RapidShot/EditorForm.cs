@@ -11,6 +11,10 @@ internal sealed class EditorForm : Form
     private readonly AppSettings settings;
     private readonly Label status, activeItem;
     private readonly Button undo, redo, save, copy, upload, delete, customColor;
+    private readonly IconButton capture, google;
+    private readonly FloatingBar toolBar;
+    private readonly ContextMenuStrip captureMenu = new(), colorMenu = new();
+    public event Action<bool, string?>? CaptureRequested;
     private readonly Dictionary<EditorTool, ToolGroupButton> tools = [];
     private readonly Dictionary<EditorTool, string> toolNames = [];
     private readonly NumericUpDown fontSize, pinSize;
@@ -33,25 +37,23 @@ internal sealed class EditorForm : Form
     {
         this.settings = settings; document = new(image);
         Theme.Apply(this); Font = new Font("Segoe UI", 9.5f);
-        Text = "RapidShot — редактор"; ClientSize = new(920, 580); MinimumSize = new(740, 480);
+        Text = "RapidShot"; ClientSize = new(920, 580); MinimumSize = new(740, 480);
         KeyPreview = true;
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 5, ColumnCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
-        root.RowStyles.Add(new(SizeType.Absolute, 52)); root.RowStyles.Add(new(SizeType.Percent, 100));
-        root.RowStyles.Add(new(SizeType.Absolute, 40)); root.RowStyles.Add(new(SizeType.Absolute, 46)); root.RowStyles.Add(new(SizeType.Absolute, 26));
-        var header = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Panel, ColumnCount = 2, Padding = new Padding(12, 6, 10, 6) };
-        header.ColumnStyles.Add(new(SizeType.Percent, 100)); header.ColumnStyles.Add(new(SizeType.AutoSize));
-        header.Controls.Add(new Label { Text = "RAPID SHOT", Font = new Font("Segoe UI", 13, FontStyle.Bold), ForeColor = Theme.Accent, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Margin = Padding.Empty });
-        var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
-        save = Theme.Button("Сохранить…", (_, _) => SaveImage()); tips.SetToolTip(save, "Сохранить PNG или JPEG · Ctrl+S");
-        copy = Theme.Button("В буфер", (_, _) => CopyImage()); tips.SetToolTip(copy, "Скопировать изображение · Ctrl+C");
-        upload = Theme.Button("Загрузить на Yapx ↗", async (_, _) => await Upload(), true);
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 4, ColumnCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
+        root.RowStyles.Add(new(SizeType.Percent, 100)); root.RowStyles.Add(new(SizeType.Absolute, 52)); root.RowStyles.Add(new(SizeType.Absolute, 56)); root.RowStyles.Add(new(SizeType.Absolute, 20));
+        root.ColumnStyles.Add(new(SizeType.Percent, 100));
+        save = new IconButton(UiIcon.Save, "Сохранить"); save.Click += (_, _) => SaveImage(); tips.SetToolTip(save, "Сохранить PNG или JPEG · Ctrl+S");
+        copy = new IconButton(UiIcon.Copy, "В буфер"); copy.Click += (_, _) => CopyImage(); tips.SetToolTip(copy, "Скопировать изображение · Ctrl+C");
+        upload = new IconButton(UiIcon.Upload, "Загрузить на Yapx"); upload.Click += async (_, _) => await Upload();
         upload.AccessibleName = "Загрузить на Yapx"; tips.SetToolTip(upload, "Загрузить снимок на Yapx и получить ссылку");
-        foreach (var button in new[] { save, copy, upload }) { button.Height = 32; button.Padding = new Padding(8, 2, 8, 2); button.Margin = new Padding(3); }
-        actions.Controls.AddRange([save, copy, upload]); header.Controls.Add(actions); root.Controls.Add(header);
+        google = new IconButton(UiIcon.Search, "Поиск в Google"); google.Click += async (_, _) => await SearchGoogle(); tips.SetToolTip(google, "Поиск по снимку · Google Lens");
         workspace = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 1, Margin = Padding.Empty };
         workspace.ColumnStyles.Add(new(SizeType.Percent, 100));
         canvas = new(document) { Dock = DockStyle.Fill, Margin = Padding.Empty }; workspace.Controls.Add(canvas); root.Controls.Add(workspace);
-        var toolBar = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Theme.Panel, Padding = new Padding(8, 2, 8, 2), Margin = Padding.Empty, AutoScroll = true, AccessibleName = "Инструменты" };
+        toolBar = new FloatingBar { AccessibleName = "Инструменты" };
+        capture = new IconButton(UiIcon.Camera, "Снимок  ⌄") { ShowText = true, Width = 112, BackColor = Theme.Accent, ForeColor = Theme.Background };
+        capture.Click += (_, _) => ShowCaptureMenu(); tips.SetToolTip(capture, "Новый снимок области или выбранного экрана");
+        toolBar.Controls.AddRange([capture, save, copy, upload, google, Separator()]);
         ToolDefinition[][] groups = [
             [new(EditorTool.Select, "↖", "Выбор / перенос", "V")],
             [new(EditorTool.Pen, "✎", "Карандаш", "P"), new(EditorTool.Line, "╱", "Линия", "L"), new(EditorTool.Arrow, "↗", "Стрелка", "A")],
@@ -67,30 +69,30 @@ internal sealed class EditorForm : Form
             toolBar.Controls.Add(button);
             tips.SetToolTip(button, string.Join("\n", group.Select(d => $"{d.Name} · {d.Shortcut}")) + (group.Length > 1 ? "\nУдерживайте кнопку для выбора · ПКМ — открыть список" : ""));
         }
-        toolBar.Controls.Add(new Panel { Width = 1, Height = 28, BackColor = Theme.Raised, Margin = new Padding(8, 4, 8, 4) });
-        undo = Theme.Button("↶", (_, _) => Undo());
-        redo = Theme.Button("↷", (_, _) => { canvas.CommitText(); canvas.CancelGesture(false); document.Redo(); });
-        delete = Theme.Button("×", (_, _) => canvas.DeleteSelected());
-        foreach (var button in new[] { undo, redo, delete }) { button.AutoSize = false; button.Size = new(36, 32); button.Padding = Padding.Empty; button.Margin = new Padding(3, 2, 3, 2); button.Font = new Font("Segoe UI", 14); }
+        toolBar.Controls.Add(Separator());
+        undo = new IconButton(UiIcon.Undo, "Отменить"); undo.Click += (_, _) => Undo();
+        redo = new IconButton(UiIcon.Redo, "Повторить"); redo.Click += (_, _) => { canvas.CommitText(); canvas.CancelGesture(false); document.Redo(); };
+        delete = new IconButton(UiIcon.Delete, "Удалить пометку"); delete.Click += (_, _) => canvas.DeleteSelected();
         undo.AccessibleName = "Отменить"; redo.AccessibleName = "Повторить"; delete.AccessibleName = "Удалить пометку";
         tips.SetToolTip(undo, "Отменить · Ctrl+Z"); tips.SetToolTip(redo, "Повторить · Ctrl+Shift+Z / Ctrl+Y"); tips.SetToolTip(delete, "Удалить выбранную пометку · Delete");
         toolBar.Controls.AddRange([undo, redo, delete]);
-        activeItem = new Label { Size = new(230, 32), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, ForeColor = Theme.Muted, Margin = new Padding(8, 2, 0, 2) };
+        activeItem = new Label { Visible = false };
         tips.SetToolTip(activeItem, "Параметры изменяют выбранную пометку. Esc — снять выделение."); toolBar.Controls.Add(activeItem); root.Controls.Add(toolBar);
-        parameterBar = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, BackColor = Theme.Panel, Padding = new Padding(8, 3, 8, 3), Margin = Padding.Empty, AutoScroll = true, AccessibleName = "Параметры инструмента" };
-        colorControls = new FlowLayoutPanel { Size = new(196, 38), FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = new Padding(4, 0, 4, 0), AccessibleName = "Цвет" };
-        colorControls.Controls.Add(new Label { Text = "Цвет", Height = 14, Width = 190, ForeColor = Theme.Muted, Font = new Font("Segoe UI", 8.5f), Margin = Padding.Empty });
-        var palette = new FlowLayoutPanel { Size = new(196, 22), WrapContents = false, Margin = Padding.Empty };
+        parameterBar = new FloatingBar { AccessibleName = "Параметры инструмента" };
+        colorControls = new FlowLayoutPanel { Size = new(98, 38), WrapContents = false, Margin = new Padding(0, 0, 4, 0), AccessibleName = "Цвет" };
         Color[] colors = [Color.FromArgb(255, 88, 100), Color.FromArgb(255, 175, 78), Color.FromArgb(255, 218, 87), Theme.Accent, Color.FromArgb(90, 162, 255), Color.FromArgb(184, 137, 255), Color.White, Color.FromArgb(26, 30, 40)];
         foreach (var color in colors)
         {
-            var swatch = new Button { Size = new(18, 20), BackColor = color, FlatStyle = FlatStyle.Flat, Margin = new Padding(1, 0, 1, 0), Cursor = Cursors.Hand, AccessibleName = $"Цвет {ColorTranslator.ToHtml(color)}" };
-            swatch.FlatAppearance.BorderColor = Theme.Muted; swatch.Click += (_, _) => SetColor(color); palette.Controls.Add(swatch);
+            var swatch = new ToolStripMenuItem(ColorTranslator.ToHtml(color));
+            var swatchImage = new Bitmap(16, 16); using (var graphics = Graphics.FromImage(swatchImage)) { graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias; using var ink = new SolidBrush(color); graphics.FillEllipse(ink, 1, 1, 14, 14); }
+            swatch.Image = swatchImage; swatch.Click += (_, _) => SetColor(color); colorMenu.Items.Add(swatch);
         }
-        customColor = Theme.Button("+", (_, _) => { using var dialog = new ColorDialog { Color = canvas.Ink, FullOpen = true }; if (dialog.ShowDialog(this) == DialogResult.OK) SetColor(dialog.Color); });
-        customColor.AutoSize = false; customColor.Size = new(28, 22); customColor.Font = new Font("Segoe UI", 8.5f); customColor.Padding = Padding.Empty; customColor.Margin = new Padding(2, 0, 0, 0); customColor.FlatAppearance.BorderSize = 2;
+        colorMenu.Items.Add(new ToolStripSeparator()); colorMenu.Items.Add("Другой цвет…", null, (_, _) => { using var dialog = new ColorDialog { Color = canvas.Ink, FullOpen = true }; if (dialog.ShowDialog(this) == DialogResult.OK) SetColor(dialog.Color); });
+        colorMenu.BackColor = captureMenu.BackColor = Theme.Panel; colorMenu.ForeColor = captureMenu.ForeColor = Theme.Foreground;
+        customColor = new IconButton(UiIcon.Color, "Цвет  ⌄") { ShowText = true, Width = 94, Height = 36 };
+        customColor.Click += (_, _) => colorMenu.Show(customColor, Point.Empty, ToolStripDropDownDirection.AboveRight);
         customColor.FlatAppearance.BorderColor = canvas.Ink; customColor.AccessibleName = "Другой цвет"; tips.SetToolTip(customColor, "Другой цвет");
-        palette.Controls.Add(customColor); colorControls.Controls.Add(palette); parameterBar.Controls.Add(colorControls);
+        colorControls.Controls.Add(customColor); parameterBar.Controls.Add(colorControls);
         strokeControls = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
         width = new ParameterSlider { Minimum = 1, Maximum = 32, Value = 4, AccessibleName = "Толщина линии" };
         strokeControls.Controls.Add(ParameterBox("Толщина: 4 px", width, 112, out widthLabel));
@@ -132,13 +134,24 @@ internal sealed class EditorForm : Form
         applyCrop = Theme.Button("Обрезать ↵", (_, _) => canvas.CommitCrop(), true); resetCrop = Theme.Button("Сбросить · Esc", (_, _) => canvas.CancelCrop());
         foreach (var button in new[] { applyCrop, resetCrop }) { button.AutoSize = false; button.Size = new(112, 32); button.Padding = Padding.Empty; button.Margin = new Padding(4, 2, 4, 2); }
         cropControls.Controls.AddRange([applyCrop, resetCrop]); parameterBar.Controls.Add(cropControls); root.Controls.Add(parameterBar);
-        status = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, Padding = new Padding(10, 0, 4, 0), BackColor = Theme.Panel, ForeColor = Theme.Muted };
+        status = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, AutoEllipsis = true, Font = new Font("Segoe UI", 8), Padding = new Padding(10, 0, 4, 0), BackColor = Theme.Background, ForeColor = Theme.Muted };
         root.Controls.Add(status); Controls.Add(root);
         canvas.HintChanged += text => status.Text = text; canvas.SelectionChanged += SyncStyle;
         canvas.ToolActivated += tool => { HighlightTool(tool); UpdatePropertyVisibility(); };
         canvas.CropStateChanged += () => { UpdatePropertyVisibility(); UpdateHistory(); };
         document.Changed += () => { exported = false; UpdateHistory(); UpdatePropertyVisibility(); };
         UpdateHistory(); SelectTool(EditorTool.Pen); FormClosing += ClosingEditor;
+        void FitBars() { toolBar.MaximumSize = new Size(Math.Max(300, ClientSize.Width - 24), 46); parameterBar.MaximumSize = new Size(Math.Max(300, ClientSize.Width - 24), 50); }
+        SizeChanged += (_, _) => FitBars(); FitBars();
+    }
+    private static Control Separator() => new Panel { Width = 1, Height = 24, BackColor = Color.FromArgb(74, 78, 85), Margin = new Padding(6, 5, 6, 5) };
+    private void ShowCaptureMenu()
+    {
+        foreach (var item in captureMenu.Items.Cast<ToolStripItem>().ToArray()) item.Dispose(); captureMenu.Items.Clear();
+        captureMenu.Items.Add("Снимок области", null, (_, _) => CaptureRequested?.Invoke(true, null));
+        captureMenu.Items.Add("Все экраны целиком", null, (_, _) => CaptureRequested?.Invoke(false, null));
+        captureMenu.Items.AddRange(CaptureTargets.MenuItems(CaptureTargets.GetDisplays(), device => CaptureRequested?.Invoke(false, device)));
+        captureMenu.Show(capture, Point.Empty, ToolStripDropDownDirection.AboveRight);
     }
     private static Panel ParameterBox(string title, Control input, int width, out Label label)
     {
@@ -232,8 +245,8 @@ internal sealed class EditorForm : Form
     }
     private void HighlightTool(EditorTool tool)
     {
-        foreach (var button in tools.Values.Distinct()) { button.BackColor = Theme.Raised; button.ForeColor = Theme.Foreground; }
-        tools[tool].Remember(tool); tools[tool].BackColor = Theme.Accent; tools[tool].ForeColor = Theme.Background;
+        foreach (var button in tools.Values.Distinct()) { button.Selected = false; button.BackColor = Theme.Panel; button.ForeColor = Theme.Foreground; }
+        tools[tool].Remember(tool); tools[tool].Selected = true;
     }
     private void SelectTool(EditorTool tool)
     {
@@ -282,6 +295,36 @@ internal sealed class EditorForm : Form
         }
         catch (Exception ex) { ShowError("Не удалось скопировать снимок", ex); }
     }
+    private async Task SearchGoogle()
+    {
+        if (uploading != null) { uploading.Cancel(); return; }
+        CommitPinNumber(); canvas.CommitEdits();
+        using var cancellation = new CancellationTokenSource(); uploading = cancellation;
+        canvas.Enabled = false; save.Enabled = copy.Enabled = upload.Enabled = capture.Enabled = false;
+        foreach (var button in tools.Values.Distinct()) button.Enabled = false;
+        parameterBar.Enabled = false; undo.Enabled = redo.Enabled = delete.Enabled = false;
+        google.Symbol = UiIcon.Cancel; google.Invalidate(); status.Text = "Поиск по снимку в Google Lens…";
+        try
+        {
+            using var image = document.Render(); using var bytes = new MemoryStream(); image.Save(bytes, ImageFormat.Png);
+            using var client = new GoogleLensClient(); var url = await client.SearchAsync(bytes.ToArray(), image.Size, cancellation.Token);
+            if (IsDisposed) return;
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+            status.Text = "Результаты Google Lens открыты в браузере.";
+        }
+        catch (OperationCanceledException) { if (!IsDisposed) status.Text = cancellation.IsCancellationRequested ? "Поиск отменён." : "Google не ответил вовремя. Повторите поиск."; }
+        catch (Exception ex) { if (!IsDisposed) ShowError("Не удалось выполнить поиск в Google", ex); }
+        finally
+        {
+            uploading = null;
+            if (!IsDisposed)
+            {
+                canvas.Enabled = true; save.Enabled = copy.Enabled = upload.Enabled = capture.Enabled = true;
+                foreach (var button in tools.Values.Distinct()) button.Enabled = true;
+                parameterBar.Enabled = true; google.Symbol = UiIcon.Search; google.Invalidate(); UpdatePropertyVisibility(); UpdateHistory();
+            }
+        }
+    }
     private async Task Upload()
     {
         if (uploading != null) { uploading.Cancel(); return; }
@@ -291,7 +334,7 @@ internal sealed class EditorForm : Form
         canvas.Enabled = false; save.Enabled = copy.Enabled = false;
         foreach (var button in tools.Values.Distinct()) button.Enabled = false;
         parameterBar.Enabled = false; delete.Enabled = false; undo.Enabled = redo.Enabled = false;
-        upload.Text = "Отменить"; status.Text = "Загрузка изображения на Yapx…";
+        google.Enabled = capture.Enabled = false; ((IconButton)upload).Symbol = UiIcon.Cancel; upload.Invalidate(); status.Text = "Загрузка изображения на Yapx…";
         try
         {
             using var image = document.Render();
@@ -313,7 +356,7 @@ internal sealed class EditorForm : Form
             if (!IsDisposed)
             {
                 canvas.Enabled = true; save.Enabled = copy.Enabled = true;
-                upload.Text = "Загрузить на Yapx ↗";
+                ((IconButton)upload).Symbol = UiIcon.Upload; upload.Invalidate(); google.Enabled = capture.Enabled = true;
                 workspace.Enabled = true;
                 foreach (var button in tools.Values.Distinct()) button.Enabled = true;
                 parameterBar.Enabled = true; UpdatePropertyVisibility(); UpdateHistory();
@@ -356,7 +399,7 @@ internal sealed class EditorForm : Form
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { tips.Dispose(); canvas.Dispose(); document.Dispose(); }
+        if (disposing) { tips.Dispose(); captureMenu.Dispose(); foreach (ToolStripItem item in colorMenu.Items) item.Image?.Dispose(); colorMenu.Dispose(); canvas.Dispose(); document.Dispose(); }
         base.Dispose(disposing);
     }
 }
