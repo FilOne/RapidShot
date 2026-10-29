@@ -33,6 +33,8 @@ internal sealed partial class EditorCanvas : Control
     public int Opacity { get; set; } = 100;
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public float TextSize { get; set; } = 28;
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public float PinSize { get; set; } = 48;
     public Annotation? Selected { get; private set; }
     public event Action? SelectionChanged;
     public event Action<EditorTool>? ToolActivated;
@@ -96,6 +98,7 @@ internal sealed partial class EditorCanvas : Control
         if (Annotation.IsStrokeTool(Selected.Tool)) Selected.Opacity = Opacity;
         if (Selected.Tool == EditorTool.Arrow) Selected.DoubleHeaded = DoubleHeaded;
         if (Selected.Tool == EditorTool.Text) MeasureText(Selected);
+        if (Selected.Tool == EditorTool.Pin && Selected.PinSize != PinSize) PinMarker.Resize(Selected, PinSize);
         Document.NotifyChanged();
     }
     private void UpdateViewLayout()
@@ -148,6 +151,11 @@ internal sealed partial class EditorCanvas : Control
         if (!IsEditingText && StartHandleDrag(e)) return;
         if (!imageBounds.Contains(e.Location)) return;
         var p = ToImage(e.Location); anchor = last = p;
+        if (Tool == EditorTool.Pin)
+        {
+            Selected = Document.AddPin(p, Ink, PinSize); SelectionChanged?.Invoke(); Invalidate();
+            HintChanged?.Invoke($"Пин {Selected.PinNumber} добавлен. Следующий: {Document.NextPinNumber}. V — перенос."); return;
+        }
         if (Tool == EditorTool.Text)
         {
             BeginText(p, Find(p) is { Tool: EditorTool.Text } text ? text : null);

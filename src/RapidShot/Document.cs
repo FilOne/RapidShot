@@ -2,10 +2,11 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Buffers;
+using System.Numerics;
 
 namespace RapidShot;
 
-public enum EditorTool { Select, Pen, Rectangle, Ellipse, Arrow, Line, Text, Blur, Eraser, Crop }
+public enum EditorTool { Select, Pen, Rectangle, Ellipse, Arrow, Line, Text, Blur, Eraser, Crop, Pin }
 
 public sealed class Annotation
 {
@@ -17,13 +18,15 @@ public sealed class Annotation
     public int Opacity { get; set; } = 100;
     public string Text { get; set; } = "";
     public bool DoubleHeaded { get; set; }
+    public BigInteger PinNumber { get; set; }
+    public float PinSize { get; set; } = 48;
     public PointF Start { get; set; }
     public PointF End { get; set; }
     public List<PointF> Points { get; set; } = [];
     public RectangleF Bounds => RectangleF.FromLTRB(Math.Min(Start.X, End.X), Math.Min(Start.Y, End.Y), Math.Max(Start.X, End.X), Math.Max(Start.Y, End.Y));
     public RectangleF GeometryBounds => Tool == EditorTool.Pen && Points.Count > 0
         ? RectangleF.FromLTRB(Points.Min(p => p.X), Points.Min(p => p.Y), Points.Max(p => p.X), Points.Max(p => p.Y)) : Bounds;
-    public Annotation Clone() => new() { Id = Id, Tool = Tool, Color = Color, Width = Width, FontSize = FontSize, Opacity = Opacity, Text = Text, DoubleHeaded = DoubleHeaded, Start = Start, End = End, Points = [.. Points] };
+    public Annotation Clone() => new() { Id = Id, Tool = Tool, Color = Color, Width = Width, FontSize = FontSize, Opacity = Opacity, Text = Text, DoubleHeaded = DoubleHeaded, PinNumber = PinNumber, PinSize = PinSize, Start = Start, End = End, Points = [.. Points] };
     public static bool IsStrokeTool(EditorTool tool) => tool is EditorTool.Pen or EditorTool.Line or EditorTool.Arrow or EditorTool.Rectangle or EditorTool.Ellipse;
     public void Offset(float dx, float dy)
     {
@@ -42,6 +45,12 @@ public sealed class Annotation
     }
     public bool HitTest(PointF point, float tolerance)
     {
+        if (Tool == EditorTool.Pin)
+        {
+            using var pinPath = PinMarker.CreatePath(Bounds);
+            using var outline = new Pen(Color.Black, tolerance * 2);
+            return pinPath.IsVisible(point) || pinPath.IsOutlineVisible(point, outline);
+        }
         if (Tool is EditorTool.Blur or EditorTool.Text) return SelectionBounds.Contains(point);
         if (Tool == EditorTool.Pen)
             return Points.Count == 1 ? Distance(point, Points[0], Points[0]) <= tolerance + Width / 2
@@ -80,23 +89,25 @@ public sealed class Annotation
                 using (var brush = new SolidBrush(Color))
                     g.DrawString(Text, font, brush, Start, StringFormat.GenericTypographic);
                 break;
+            case EditorTool.Pin: PinMarker.Draw(g, this); break;
         }
     }
 }
 
 public sealed class ScreenshotDocument : IDisposable
 {
-    private sealed record Snapshot(Rectangle Crop, List<Annotation> Items);
+    private sealed record Snapshot(Rectangle Crop, List<Annotation> Items, BigInteger NextPinNumber);
     private readonly List<Snapshot> undo = [];
     private readonly List<Snapshot> redo = [];
     public Bitmap Original { get; }
     public Rectangle Crop { get; private set; }
     public List<Annotation> Items { get; private set; } = [];
+    public BigInteger NextPinNumber { get; private set; } = BigInteger.One;
     public bool CanUndo => undo.Count > 0;
     public bool CanRedo => redo.Count > 0;
     public event Action? Changed;
     public ScreenshotDocument(Bitmap bitmap) { Original = bitmap; Crop = new(Point.Empty, bitmap.Size); }
-    private Snapshot State() => new(Crop, Items.Select(x => x.Clone()).ToList());
+    private Snapshot State() => new(Crop, Items.Select(x => x.Clone()).ToList(), NextPinNumber);
     public void BeginChange()
     {
         undo.Add(State());
@@ -104,7 +115,17 @@ public sealed class ScreenshotDocument : IDisposable
         redo.Clear();
     }
     public void NotifyChanged() => Changed?.Invoke();
-    public void Add(Annotation item) { BeginChange(); Items.Add(item); NotifyChanged(); }
+    public void Add(Annotation item)
+    {
+        BeginChange(); Items.Add(item);
+        if (item.Tool == EditorTool.Pin && item.PinNumber >= NextPinNumber) NextPinNumber = item.PinNumber + BigInteger.One;
+        NotifyChanged();
+    }
+    public Annotation AddPin(PointF point, Color color, float size)
+    {
+        var item = PinMarker.Create(NextPinNumber, point, color, size, Crop);
+        Add(item); return item;
+    }
     public bool CropTo(Rectangle rectangle)
     {
         rectangle.Intersect(Crop);
@@ -121,7 +142,7 @@ public sealed class ScreenshotDocument : IDisposable
         if (!CanRedo) return;
         var next = redo[^1]; undo.Add(State()); redo.RemoveAt(redo.Count - 1); Restore(next);
     }
-    private void Restore(Snapshot state) { Crop = state.Crop; Items = state.Items.Select(x => x.Clone()).ToList(); NotifyChanged(); }
+    private void Restore(Snapshot state) { Crop = state.Crop; Items = state.Items.Select(x => x.Clone()).ToList(); NextPinNumber = state.NextPinNumber; NotifyChanged(); }
     public Bitmap Render(Annotation? excluded = null)
     {
         return RenderPreview(Crop.Size, excluded);

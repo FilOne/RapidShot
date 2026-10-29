@@ -31,7 +31,7 @@ internal sealed class ToolGroupButton : Button
     public void Remember(EditorTool tool)
     {
         var definition = definitions.First(x => x.Tool == tool);
-        CurrentTool = tool; Text = definition.Icon; AccessibleName = definition.Name;
+        CurrentTool = tool; Text = tool == EditorTool.Pin ? "" : definition.Icon; AccessibleName = definition.Name;
         foreach (ToolStripMenuItem item in menu.Items) item.Checked = (EditorTool)item.Tag! == tool;
         Invalidate();
     }
@@ -61,6 +61,12 @@ internal sealed class ToolGroupButton : Button
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
+        if (CurrentTool == EditorTool.Pin)
+        {
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            var x = (Width - 18f) / 2; var y = (Height - 22.5f) / 2;
+            PinMarker.Draw(e.Graphics, new Annotation { Tool = EditorTool.Pin, PinNumber = 1, PinSize = 18, Color = ForeColor, Start = new(x, y), End = new(x + 18, y + 22.5f) });
+        }
         if (definitions.Length < 2) return;
         using var brush = new SolidBrush(ForeColor);
         e.Graphics.FillPolygon(brush, [new Point(Width - 7, Height - 3), new(Width - 3, Height - 3), new(Width - 3, Height - 7)]);

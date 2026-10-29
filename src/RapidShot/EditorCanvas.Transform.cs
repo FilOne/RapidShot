@@ -25,7 +25,7 @@ internal sealed partial class EditorCanvas
         var tl = ToScreen(b.Location); var br = ToScreen(new(b.Right, b.Bottom));
         yield return (ObjectHandle.TopLeft, tl); yield return (ObjectHandle.TopRight, new(br.X, tl.Y));
         yield return (ObjectHandle.BottomRight, br); yield return (ObjectHandle.BottomLeft, new(tl.X, br.Y));
-        if (item.Tool == EditorTool.Text) yield break; // Text scales uniformly from its corners.
+        if (item.Tool is EditorTool.Text or EditorTool.Pin) yield break; // Text and pins scale uniformly from their corners.
         yield return (ObjectHandle.Top, new((tl.X + br.X) / 2, tl.Y)); yield return (ObjectHandle.Right, new(br.X, (tl.Y + br.Y) / 2));
         yield return (ObjectHandle.Bottom, new((tl.X + br.X) / 2, br.Y)); yield return (ObjectHandle.Left, new(tl.X, (tl.Y + br.Y) / 2));
     }
@@ -92,6 +92,7 @@ internal sealed partial class EditorCanvas
         else if (transformHandle == ObjectHandle.Start) item.Start = new(original.Start.X + dx, original.Start.Y + dy);
         else if (transformHandle == ObjectHandle.End) item.End = new(original.End.X + dx, original.End.Y + dy);
         else if (item.Tool == EditorTool.Text) ResizeText(item, original, dx, dy);
+        else if (item.Tool == EditorTool.Pin) ResizePin(item, original, dx, dy);
         else
         {
             var b = original.GeometryBounds;
@@ -122,6 +123,18 @@ internal sealed partial class EditorCanvas
         var size = item.Bounds.Size;
         item.Start = new(left ? b.Right - size.Width : b.Left, top ? b.Bottom - size.Height : b.Top);
         item.End = new(item.Start.X + size.Width, item.Start.Y + size.Height);
+    }
+    private void ResizePin(Annotation item, Annotation original, float dx, float dy)
+    {
+        var b = original.Bounds;
+        var left = transformHandle is ObjectHandle.TopLeft or ObjectHandle.BottomLeft;
+        var top = transformHandle is ObjectHandle.TopLeft or ObjectHandle.TopRight;
+        var vx = left ? -b.Width : b.Width; var vy = top ? -b.Height : b.Height;
+        var scale = ((vx + dx) * vx + (vy + dy) * vy) / Math.Max(1, vx * vx + vy * vy);
+        var size = Math.Clamp(original.PinSize * scale, 16, 160);
+        var dimensions = PinMarker.Measure(item.PinNumber, size); item.PinSize = size;
+        item.Start = new(left ? b.Right - dimensions.Width : b.Left, top ? b.Bottom - dimensions.Height : b.Top);
+        item.End = new(item.Start.X + dimensions.Width, item.Start.Y + dimensions.Height);
     }
     private void FinishObjectTransform()
     {

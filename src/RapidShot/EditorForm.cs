@@ -11,10 +11,11 @@ internal sealed class EditorForm : Form
     private readonly Button undo, redo, save, copy, upload, delete, customColor;
     private readonly Dictionary<EditorTool, ToolGroupButton> tools = [];
     private readonly Dictionary<EditorTool, string> toolNames = [];
-    private readonly NumericUpDown fontSize;
+    private readonly NumericUpDown fontSize, pinSize;
     private readonly ParameterSlider width, transparency;
     private readonly Label widthLabel, transparencyLabel;
-    private readonly FlowLayoutPanel parameterBar, strokeControls, colorControls, arrowEnds, cropControls;
+    private readonly FlowLayoutPanel parameterBar, strokeControls, colorControls, arrowEnds, cropControls, pinControls;
+    private readonly Label nextPin;
     private readonly Panel transparencyControl, fontControls, arrowControls;
     private readonly RadioButton arrowOne, arrowTwo;
     private readonly CheckBox recognizeShapes;
@@ -52,6 +53,7 @@ internal sealed class EditorForm : Form
             [new(EditorTool.Pen, "✎", "Карандаш", "P"), new(EditorTool.Line, "╱", "Линия", "L"), new(EditorTool.Arrow, "↗", "Стрелка", "A")],
             [new(EditorTool.Rectangle, "▭", "Прямоугольник", "R"), new(EditorTool.Ellipse, "○", "Эллипс", "O")],
             [new(EditorTool.Text, "T", "Текст", "T")],
+            [new(EditorTool.Pin, "1", "Пин", "N")],
             [new(EditorTool.Blur, "▦", "Размытие", "B"), new(EditorTool.Eraser, "◇", "Ластик", "E")],
             [new(EditorTool.Crop, "⌗", "Обрезка за края", "C")] ];
         foreach (var group in groups)
@@ -105,6 +107,12 @@ internal sealed class EditorForm : Form
         fontSize = new NumericUpDown { Minimum = 10, Maximum = 160, Value = 28, BackColor = Theme.Raised, ForeColor = Theme.Foreground, AccessibleName = "Размер текста" };
         fontSize.ValueChanged += (_, _) => { canvas.TextSize = (float)fontSize.Value; if (!updatingStyle) canvas.UpdateSelectedStyle(); };
         fontControls = ParameterBox("Текст, px", fontSize, 104, out _); parameterBar.Controls.Add(fontControls);
+        pinControls = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty, AccessibleName = "Параметры пина" };
+        pinSize = new NumericUpDown { Minimum = 16, Maximum = 160, Value = 48, BackColor = Theme.Raised, ForeColor = Theme.Foreground, AccessibleName = "Размер пина" };
+        pinSize.ValueChanged += (_, _) => { canvas.PinSize = (float)pinSize.Value; if (!updatingStyle) canvas.UpdateSelectedStyle(); };
+        pinControls.Controls.Add(ParameterBox("Размер пина, px", pinSize, 112, out _));
+        nextPin = new Label { Size = new(176, 36), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, ForeColor = Theme.Muted, Margin = new Padding(8, 0, 4, 0), AccessibleName = "Следующий номер пина" };
+        pinControls.Controls.Add(nextPin); parameterBar.Controls.Add(pinControls);
         recognizeShapes = new CheckBox { Text = "Ровные фигуры", Checked = true, Width = 150, Height = 36, Margin = new Padding(8, 0, 4, 0), ForeColor = Theme.Foreground, AccessibleName = "Распознавать круги и стрелки" };
         recognizeShapes.CheckedChanged += (_, _) => canvas.RecognizeShapes = recognizeShapes.Checked;
         tips.SetToolTip(recognizeShapes, "Ручка: замкнутый круг и набросок стрелки превращаются в редактируемые фигуры после отпускания мыши.");
@@ -138,6 +146,7 @@ internal sealed class EditorForm : Form
             width.Value = Math.Clamp((int)Math.Round(selected.Width), width.Minimum, width.Maximum);
             if (Annotation.IsStrokeTool(selected.Tool)) { canvas.Opacity = selected.Opacity; transparency.Value = 100 - selected.Opacity; }
             fontSize.Value = Math.Clamp((decimal)selected.FontSize, fontSize.Minimum, fontSize.Maximum);
+            if (selected.Tool == EditorTool.Pin) { canvas.PinSize = selected.PinSize; pinSize.Value = Math.Clamp((decimal)selected.PinSize, pinSize.Minimum, pinSize.Maximum); }
             if (selected.Tool == EditorTool.Arrow) { canvas.DoubleHeaded = selected.DoubleHeaded; arrowTwo.Checked = selected.DoubleHeaded; arrowOne.Checked = !selected.DoubleHeaded; }
             updatingStyle = false;
         }
@@ -169,15 +178,18 @@ internal sealed class EditorForm : Form
     private void UpdatePropertyVisibility()
     {
         var cropping = canvas.Tool == EditorTool.Crop; var context = ParameterTool;
-        colorControls.Visible = !cropping && (Annotation.IsStrokeTool(context) || context == EditorTool.Text);
+        colorControls.Visible = !cropping && (Annotation.IsStrokeTool(context) || context is EditorTool.Text or EditorTool.Pin);
         cropControls.Visible = cropping; arrowControls.Visible = !cropping && context == EditorTool.Arrow;
         fontControls.Visible = !cropping && canvas.Tool == EditorTool.Text;
         var strokes = Annotation.IsStrokeTool(context);
         strokeControls.Visible = !cropping && (strokes || context == EditorTool.Blur); transparencyControl.Visible = strokes;
         recognizeShapes.Visible = !cropping && canvas.Tool == EditorTool.Pen;
+        pinControls.Visible = !cropping && context == EditorTool.Pin;
+        nextPin.Text = $"Следующий: {document.NextPinNumber}";
+        tips.SetToolTip(nextPin, nextPin.Text);
         UpdateSliderLabels(); applyCrop.Enabled = resetCrop.Enabled = canvas.HasCropChanges;
         delete.Enabled = canvas.Selected != null && uploading == null;
-        activeItem.Text = canvas.Selected is { } selected ? $"{toolNames[selected.Tool]} · выбрана" : $"Инструмент: {toolNames[canvas.Tool]}";
+        activeItem.Text = canvas.Selected is { Tool: EditorTool.Pin } pin ? $"Пин {pin.PinNumber} · выбран" : canvas.Selected is { } selected ? $"{toolNames[selected.Tool]} · выбрана" : $"Инструмент: {toolNames[canvas.Tool]}";
     }
     private void HighlightTool(EditorTool tool)
     {
@@ -195,6 +207,7 @@ internal sealed class EditorForm : Form
             EditorTool.Crop => "Потяните край или угол снимка. Enter — обрезать, Esc — сбросить.",
             EditorTool.Blur => "Выделите область для размытия. Маркеры меняют размер, ползунок снизу — силу эффекта.",
             EditorTool.Pen => "Рисуйте: замкнутый круг или стрелка выравниваются при отпускании мыши. Маркеры меняют размер.",
+            EditorTool.Pin => "Щелчок ставит следующий пин. Цвет и размер — снизу. V — перенос, Delete — удалить.",
             _ => "Параметры снизу изменяют активную пометку. Esc — снять выделение."
         };
     }
@@ -283,7 +296,7 @@ internal sealed class EditorForm : Form
         if (keyData == Keys.Escape) { canvas.CancelGesture(); return true; }
         if (ActiveControl is NumericUpDown || ActiveControl is TextBoxBase) return base.ProcessCmdKey(ref msg, keyData);
         if (keyData == Keys.Delete) { canvas.DeleteSelected(); return true; }
-        var tool = keyData switch { Keys.V => EditorTool.Select, Keys.P => EditorTool.Pen, Keys.R => EditorTool.Rectangle, Keys.O => EditorTool.Ellipse, Keys.A => EditorTool.Arrow, Keys.L => EditorTool.Line, Keys.T => EditorTool.Text, Keys.B => EditorTool.Blur, Keys.E => EditorTool.Eraser, Keys.C => EditorTool.Crop, _ => (EditorTool?)null };
+        var tool = keyData switch { Keys.V => EditorTool.Select, Keys.P => EditorTool.Pen, Keys.R => EditorTool.Rectangle, Keys.O => EditorTool.Ellipse, Keys.A => EditorTool.Arrow, Keys.L => EditorTool.Line, Keys.T => EditorTool.Text, Keys.N => EditorTool.Pin, Keys.B => EditorTool.Blur, Keys.E => EditorTool.Eraser, Keys.C => EditorTool.Crop, _ => (EditorTool?)null };
         if (tool.HasValue) { SelectTool(tool.Value); return true; }
         return base.ProcessCmdKey(ref msg, keyData);
     }
