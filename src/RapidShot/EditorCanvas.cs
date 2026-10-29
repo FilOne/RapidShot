@@ -318,7 +318,7 @@ internal sealed partial class EditorCanvas : Control
                 else Document.Add(Selected);
                 lastPenStrokeAt = item.Tool == EditorTool.Pen && RecognizeShapes && recognized == null ? Environment.TickCount64 : 0;
                 SelectionChanged?.Invoke();
-                if (recognized != null) HintChanged?.Invoke(recognized.Item.Tool == EditorTool.Arrow ? "Рисунок преобразован в стрелку. Параметры и концы можно редактировать." : "Замкнутый контур преобразован в круг. Размер можно менять за маркеры.");
+                if (recognized != null) HintChanged?.Invoke(recognized.Item.Tool == EditorTool.Arrow ? "Рисунок преобразован в стрелку. Параметры и концы можно редактировать." : "Замкнутый контур выровнен в круг или эллипс. Размер можно менять за маркеры.");
             }
         }
         Invalidate();

@@ -9,7 +9,7 @@ internal sealed class SettingsDialog : Form
     private readonly TextBox folder;
     private readonly Label feedback;
     private readonly Func<AppSettings, string?> apply;
-    public SettingsDialog(AppSettings current, Func<AppSettings, string?> apply)
+    public SettingsDialog(AppSettings current, Func<AppSettings, string?> apply, IReadOnlyList<CaptureDisplay>? displays = null)
     {
         Result = current; this.apply = apply;
         Theme.Apply(this); Text = "RapidShot — настройки"; ClientSize = new(590, 485);
@@ -36,7 +36,10 @@ internal sealed class SettingsDialog : Form
         key.SelectedIndexChanged += RefreshLabel;
         layout.Controls.Add(Theme.Label("Что снимать по горячей клавише"));
         mode = Theme.ComboBox(); mode.Dock = DockStyle.Fill;
-        mode.Items.AddRange(["Выделенную область", "Все экраны целиком"]); mode.SelectedIndex = current.CaptureRegion ? 0 : 1; layout.Controls.Add(mode);
+        var choices = CaptureTargets.Choices(displays ?? CaptureTargets.GetDisplays(), current.CaptureDeviceName);
+        mode.Items.AddRange(choices);
+        mode.SelectedItem = choices.First(x => x.Region == current.CaptureRegion && (x.Region || string.Equals(x.DeviceName ?? "", current.CaptureDeviceName ?? "", StringComparison.OrdinalIgnoreCase)));
+        mode.AccessibleName = "Экран или область для горячей клавиши"; layout.Controls.Add(mode);
         layout.Controls.Add(Theme.Label("Папка сохранения по умолчанию"));
         var folderRow = new TableLayoutPanel { AutoSize = true, ColumnCount = 2, Dock = DockStyle.Fill };
         folderRow.ColumnStyles.Add(new(SizeType.Percent, 100)); folderRow.ColumnStyles.Add(new(SizeType.AutoSize));
@@ -57,7 +60,8 @@ internal sealed class SettingsDialog : Form
         try
         {
             var path = Path.GetFullPath(Environment.ExpandEnvironmentVariables(folder.Text.Trim()));
-            var settings = new AppSettings { Modifiers = Modifiers(), Key = (int)(Keys)key.SelectedItem!, CaptureRegion = mode.SelectedIndex == 0, SaveDirectory = path };
+            var choice = (CaptureChoice)mode.SelectedItem!;
+            var settings = new AppSettings { Modifiers = Modifiers(), Key = (int)(Keys)key.SelectedItem!, CaptureRegion = choice.Region, CaptureDeviceName = choice.DeviceName, SaveDirectory = path };
             var error = apply(settings);
             if (error != null) { feedback.Text = error; return; }
             Result = settings; DialogResult = DialogResult.OK; Close();

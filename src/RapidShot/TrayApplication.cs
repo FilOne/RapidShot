@@ -8,7 +8,7 @@ internal sealed class TrayApplication : ApplicationContext
     private readonly NotifyIcon tray;
     private readonly HotkeyWindow hotkey = new();
     private readonly List<EditorForm> editors = [];
-    private readonly ToolStripMenuItem captureItem;
+    private readonly ToolStripMenuItem captureItem, captureScreenItem;
     private SettingsDialog? settingsDialog;
     private bool capturing;
     private bool hotkeyRegistered;
@@ -18,6 +18,8 @@ internal sealed class TrayApplication : ApplicationContext
         captureItem = new("Снимок области", null, async (_, _) => await Capture(true));
         menu.Items.Add(captureItem);
         menu.Items.Add("Снимок всех экранов", null, async (_, _) => await Capture(false));
+        captureScreenItem = new("Снимок экрана"); menu.Items.Add(captureScreenItem);
+        menu.Opening += (_, _) => UpdateScreens();
         menu.Items.Add("Открыть изображение…", null, (_, _) => OpenImage());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Настройки…", null, (_, _) => ShowSettings());
@@ -25,8 +27,9 @@ internal sealed class TrayApplication : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Выход", null, (_, _) => Exit());
         tray = new NotifyIcon { Icon = Theme.CreateIcon(), Text = "RapidShot", ContextMenuStrip = menu, Visible = true };
-        tray.DoubleClick += async (_, _) => await Capture(settings.CaptureRegion);
-        hotkey.Pressed += async () => await Capture(settings.CaptureRegion);
+        UpdateScreens();
+        tray.DoubleClick += async (_, _) => await Capture(settings.CaptureRegion, settings.CaptureDeviceName);
+        hotkey.Pressed += async () => await Capture(settings.CaptureRegion, settings.CaptureDeviceName);
         hotkeyRegistered = hotkey.Register(settings.Modifiers, settings.Key);
         UpdateTray();
         var timer = new System.Windows.Forms.Timer { Interval = 600 };
@@ -50,7 +53,15 @@ internal sealed class TrayApplication : ApplicationContext
         tray.Text = text.Length > 63 ? "RapidShot" : text;
         captureItem.Text = "Снимок области" + (settings.CaptureRegion ? $"    {settings.HotkeyLabel}" : "");
     }
-    private async Task Capture(bool region)
+    private void UpdateScreens()
+    {
+        foreach (var item in captureScreenItem.DropDownItems.Cast<ToolStripItem>().ToArray()) item.Dispose();
+        captureScreenItem.DropDownItems.Clear();
+        var displays = CaptureTargets.GetDisplays();
+        captureScreenItem.Visible = displays.Length > 1;
+        captureScreenItem.DropDownItems.AddRange(CaptureTargets.MenuItems(displays, async device => await Capture(false, device)));
+    }
+    private async Task Capture(bool region, string? deviceName = null)
     {
         if (capturing || settingsDialog is { IsDisposed: false } || editors.Any(x => x.Modal)) return;
         // Do not take the desktop while a text/save/upload dialog belonging to an editor is open.
@@ -62,7 +73,7 @@ internal sealed class TrayApplication : ApplicationContext
         try
         {
             await Task.Delay(180);
-            image = CaptureService.Capture(region);
+            image = CaptureService.Capture(region, deviceName);
         }
         catch (Exception ex) { MessageBox.Show(ex.Message, "Не удалось сделать снимок", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         finally

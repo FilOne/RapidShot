@@ -106,7 +106,8 @@ internal sealed partial class EditorCanvas
             var d = bottom ? Math.Max(b.Bottom + dy, b.Top + 2) : b.Bottom;
             PointF Map(PointF p) => new(b.Width > .001f ? l + (p.X - b.X) * (r - l) / b.Width : (l + r) / 2,
                 b.Height > .001f ? t + (p.Y - b.Y) * (d - t) / b.Height : (t + d) / 2);
-            item.Start = Map(original.Start); item.End = Map(original.End);
+            if (item.Tool == EditorTool.Ellipse && original.EllipseAngle != 0) EllipseGeometry.Resize(item, original, RectangleF.FromLTRB(l, t, r, d));
+            else { item.Start = Map(original.Start); item.End = Map(original.End); }
             if (item.Tool == EditorTool.Pen) item.Points = original.Points.Select(Map).ToList();
         }
         last = point; Document.NotifyChanged();

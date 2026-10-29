@@ -5,9 +5,9 @@ namespace RapidShot;
 
 internal static class CaptureService
 {
-    public static Bitmap? Capture(bool region)
+    public static Bitmap? Capture(bool region, string? deviceName = null)
     {
-        var bounds = SystemInformation.VirtualScreen;
+        var bounds = CaptureTargets.ResolveBounds(CaptureTargets.GetDisplays(), region ? null : deviceName);
         var image = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
         var ownsImage = true;
         try

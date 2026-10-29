@@ -15,6 +15,7 @@ public sealed class Annotation
     public Color Color { get; set; } = Color.FromArgb(255, 88, 100);
     public float Width { get; set; } = 4;
     public float FontSize { get; set; } = 28;
+    public float EllipseAngle { get; set; }
     public int Opacity { get; set; } = 100;
     public string Text { get; set; } = "";
     public bool DoubleHeaded { get; set; }
@@ -25,8 +26,8 @@ public sealed class Annotation
     public List<PointF> Points { get; set; } = [];
     public RectangleF Bounds => RectangleF.FromLTRB(Math.Min(Start.X, End.X), Math.Min(Start.Y, End.Y), Math.Max(Start.X, End.X), Math.Max(Start.Y, End.Y));
     public RectangleF GeometryBounds => Tool == EditorTool.Pen && Points.Count > 0
-        ? RectangleF.FromLTRB(Points.Min(p => p.X), Points.Min(p => p.Y), Points.Max(p => p.X), Points.Max(p => p.Y)) : Bounds;
-    public Annotation Clone() => new() { Id = Id, Tool = Tool, Color = Color, Width = Width, FontSize = FontSize, Opacity = Opacity, Text = Text, DoubleHeaded = DoubleHeaded, PinNumber = PinNumber, PinSize = PinSize, Start = Start, End = End, Points = [.. Points] };
+        ? RectangleF.FromLTRB(Points.Min(p => p.X), Points.Min(p => p.Y), Points.Max(p => p.X), Points.Max(p => p.Y)) : Tool == EditorTool.Ellipse && EllipseAngle != 0 ? EllipseGeometry.Bounds(this) : Bounds;
+    public Annotation Clone() => new() { Id = Id, Tool = Tool, Color = Color, Width = Width, FontSize = FontSize, EllipseAngle = EllipseAngle, Opacity = Opacity, Text = Text, DoubleHeaded = DoubleHeaded, PinNumber = PinNumber, PinSize = PinSize, Start = Start, End = End, Points = [.. Points] };
     public static bool IsStrokeTool(EditorTool tool) => tool is EditorTool.Pen or EditorTool.Line or EditorTool.Arrow or EditorTool.Rectangle or EditorTool.Ellipse;
     public void Offset(float dx, float dy)
     {
@@ -56,9 +57,9 @@ public sealed class Annotation
             return Points.Count == 1 ? Distance(point, Points[0], Points[0]) <= tolerance + Width / 2
                 : Enumerable.Range(1, Points.Count - 1).Any(i => Distance(point, Points[i - 1], Points[i]) <= tolerance + Width / 2);
         if (Tool is EditorTool.Line or EditorTool.Arrow) return Distance(point, Start, End) <= tolerance + Width * 2;
-        using var path = new GraphicsPath();
         if (Bounds.Width < 1 || Bounds.Height < 1) return false;
-        if (Tool == EditorTool.Ellipse) path.AddEllipse(Bounds); else path.AddRectangle(Bounds);
+        using var path = Tool == EditorTool.Ellipse ? EllipseGeometry.Path(this) : new GraphicsPath();
+        if (Tool != EditorTool.Ellipse) path.AddRectangle(Bounds);
         using var pen = new Pen(Color.Black, Width + tolerance * 2);
         return path.IsOutlineVisible(point, pen);
     }
@@ -79,7 +80,9 @@ public sealed class Annotation
                 else if (Points.Count == 1) { using var brush = new SolidBrush(strokeColor); g.FillEllipse(brush, Points[0].X - Width / 2, Points[0].Y - Width / 2, Width, Width); }
                 break;
             case EditorTool.Rectangle: if (Bounds.Width > 0 && Bounds.Height > 0) g.DrawRectangle(pen, Bounds.X, Bounds.Y, Bounds.Width, Bounds.Height); break;
-            case EditorTool.Ellipse: if (Bounds.Width > 0 && Bounds.Height > 0) g.DrawEllipse(pen, Bounds); break;
+            case EditorTool.Ellipse:
+                if (Bounds.Width > 0 && Bounds.Height > 0) { using var path = EllipseGeometry.Path(this); g.DrawPath(pen, path); }
+                break;
             case EditorTool.Arrow:
                 using (var cap = new AdjustableArrowCap(4, 5, true)) { pen.CustomEndCap = cap; if (DoubleHeaded) pen.CustomStartCap = cap; g.DrawLine(pen, Start, End); }
                 break;

@@ -6,7 +6,7 @@ internal static partial class FreehandRecognizer
     public static Result? Recognize(Annotation stroke, IReadOnlyList<Annotation> previous)
     {
         if (stroke.Tool != EditorTool.Pen || stroke.Points.Count < 2) return null;
-        if (Circle(stroke) is { } circle) return new(circle, 0);
+        if (Ellipse(stroke) is { } ellipse) return new(ellipse, 0);
         if (Arrow([stroke]) is { } arrow) return new(arrow, 0);
         // A shaft and a V-shaped head may be drawn with two or three consecutive strokes.
         for (var count = 1; count <= Math.Min(2, previous.Count); count++)
@@ -16,29 +16,6 @@ internal static partial class FreehandRecognizer
             if (Arrow(group) is { } combined) return new(combined, count);
         }
         return null;
-    }
-    private static Annotation? Circle(Annotation stroke)
-    {
-        var b = stroke.GeometryBounds;
-        if (stroke.Points.Count < 8 || Math.Min(b.Width, b.Height) < Math.Max(18, stroke.Width * 4) || b.Width / b.Height is < .75f or > 1.33f) return null;
-        var center = new PointF(b.X + b.Width / 2, b.Y + b.Height / 2);
-        var points = Resample(stroke.Points);
-        var radius = points.Average(p => Distance(p, center));
-        if (Distance(points[0], points[^1]) > radius * .35f) return null;
-        var errors = points.Select(p => (Distance(p, center) - radius) / radius).ToArray();
-        if (Math.Sqrt(errors.Average(e => e * e)) > .095 || errors.Max(e => Math.Abs(e)) > .23) return null;
-        var length = Length(points);
-        if (length < Math.Tau * radius * .8 || length > Math.Tau * radius * 1.3) return null;
-        var turn = 0d; var travel = 0d;
-        for (var i = 1; i < points.Count; i++)
-        {
-            var angle = Math.Atan2(points[i].Y - center.Y, points[i].X - center.X) - Math.Atan2(points[i - 1].Y - center.Y, points[i - 1].X - center.X);
-            angle = Math.Atan2(Math.Sin(angle), Math.Cos(angle)); turn += angle; travel += Math.Abs(angle);
-        }
-        if (Math.Abs(turn) < Math.PI * 1.75 || travel > Math.Abs(turn) + .65) return null;
-        var result = stroke.Clone(); result.Tool = EditorTool.Ellipse; result.Points.Clear();
-        result.Start = new(center.X - radius, center.Y - radius); result.End = new(center.X + radius, center.Y + radius);
-        return result;
     }
     private static List<PointF> Resample(IReadOnlyList<PointF> points)
     {

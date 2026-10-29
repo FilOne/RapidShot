@@ -7,6 +7,7 @@ public sealed class AppSettings
     public uint Modifiers { get; set; } = 2 | 4;
     public int Key { get; set; } = (int)Keys.S;
     public bool CaptureRegion { get; set; } = true;
+    public string? CaptureDeviceName { get; set; }
     public string SaveDirectory { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "RapidShot");
     public static string SettingsPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RapidShot", "settings.json");
     public string HotkeyLabel => FormatHotkey(Modifiers, (Keys)Key);

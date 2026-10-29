@@ -123,9 +123,9 @@ internal sealed class EditorForm : Form
         pinControls.Controls.Add(ParameterBox("Номер пина", pinNumber, 120, out _));
         nextPin = new Label { Size = new(176, 36), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, ForeColor = Theme.Muted, Margin = new Padding(8, 0, 4, 0), AccessibleName = "Следующий номер пина" };
         pinControls.Controls.Add(nextPin); parameterBar.Controls.Add(pinControls);
-        recognizeShapes = new CheckBox { Text = "Ровные фигуры", Checked = true, Width = 150, Height = 36, Margin = new Padding(8, 0, 4, 0), ForeColor = Theme.Foreground, AccessibleName = "Распознавать круги и стрелки" };
+        recognizeShapes = new CheckBox { Text = "Ровные фигуры", Checked = true, Width = 150, Height = 36, Margin = new Padding(8, 0, 4, 0), ForeColor = Theme.Foreground, AccessibleName = "Распознавать круги, эллипсы и стрелки" };
         recognizeShapes.CheckedChanged += (_, _) => canvas.RecognizeShapes = recognizeShapes.Checked;
-        tips.SetToolTip(recognizeShapes, "Ручка: замкнутый круг и набросок стрелки превращаются в редактируемые фигуры после отпускания мыши.");
+        tips.SetToolTip(recognizeShapes, "Ручка: замкнутый круг, эллипс и набросок стрелки превращаются в редактируемые фигуры после отпускания мыши.");
         parameterBar.Controls.Add(recognizeShapes);
         cropControls = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty, AccessibleName = "Параметры обрезки" };
         cropControls.Controls.Add(new Label { Text = "Потяните край или угол снимка", Width = 220, Height = 32, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Theme.Muted, Margin = new Padding(4, 2, 4, 2) });
@@ -245,7 +245,7 @@ internal sealed class EditorForm : Form
             EditorTool.Eraser => "Нажмите или проведите по пометке, чтобы удалить её целиком.",
             EditorTool.Crop => "Потяните край или угол снимка. Enter — обрезать, Esc — сбросить.",
             EditorTool.Blur => "Выделите область для размытия. Маркеры меняют размер, ползунок снизу — силу эффекта.",
-            EditorTool.Pen => "Рисуйте: замкнутый круг или стрелка выравниваются при отпускании мыши. Маркеры меняют размер.",
+            EditorTool.Pen => "Рисуйте: круг, эллипс или стрелка выравниваются при отпускании мыши. Маркеры меняют размер.",
             EditorTool.Pin => "Щелчок ставит следующий пин. Цвет, размер и номер — снизу. V — перенос, Delete — удалить.",
             _ => "Параметры снизу изменяют активную пометку. Esc — снять выделение."
         };

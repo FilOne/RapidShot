@@ -17,6 +17,7 @@ internal static class Program
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        if (args.Contains("--capture")) { CaptureTargetTests.RunNative(Check); return; }
         if (args.Contains("--render"))
         {
             RenderUi(); return;
@@ -155,8 +156,10 @@ internal static class Program
         TransformTests.Run(Check, output);
         FreehandTests.Run(Check, output);
         ArrowRecognitionTests.Run(Check, output);
+        EllipseRecognitionTests.Run(Check, output);
         PinTests.Run(Check, output);
         PinNumberTests.Run(Check, output);
+        CaptureTargetTests.Run(Check, output);
         Console.WriteLine($"Проверок интерфейса пройдено: {checks}");
         Console.WriteLine("UI preview: " + output);
     }
