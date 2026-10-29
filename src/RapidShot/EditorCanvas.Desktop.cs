@@ -13,6 +13,7 @@ internal sealed partial class EditorCanvas
     internal void UseDesktopCoordinates()
     {
         desktopCoordinates = true;
+        if (Tool == EditorTool.Crop) Tool = EditorTool.Pen;
         desktopBackdrop = new Bitmap(Document.Original.Width, Document.Original.Height);
         using (var g = Graphics.FromImage(desktopBackdrop))
         {

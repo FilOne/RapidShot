@@ -26,6 +26,15 @@ internal static class RegionCaptureTests
         canvas.Font = form.Font; canvas.CreateControl(); canvas.PerformLayout();
         typeof(EditorForm).GetMethod("PositionRegionBars", Private)!.Invoke(form, null);
         var bar = Field<FloatingBar>(form, "toolBar"); var parameters = Field<FlowLayoutPanel>(form, "parameterBar");
+        var tools = Field<Dictionary<EditorTool, ToolGroupButton>>(form, "tools");
+        check(!tools.ContainsKey(EditorTool.Crop) && !bar.Controls.OfType<ToolGroupButton>().Any(button => button.Symbol == UiIcon.Crop),
+            "В режиме области на панели нет инструмента обрезки");
+        typeof(EditorForm).GetMethod("SelectTool", Private)!.Invoke(form, [EditorTool.Crop]);
+        var message = Message.Create(IntPtr.Zero, 0, IntPtr.Zero, IntPtr.Zero);
+        typeof(EditorForm).GetMethod("ProcessCmdKey", Private)!.Invoke(form, [message, Keys.C]);
+        canvas.ActivateTool(EditorTool.Crop); canvas.Tool = EditorTool.Crop;
+        check(canvas.Tool == EditorTool.Pen && !Field<FlowLayoutPanel>(form, "cropControls").Visible,
+            "Клавиша C и смена инструмента не включают обрезку в режиме области");
         check(bar.Parent == canvas && parameters.Parent == canvas && bar.Top > doc.Crop.Bottom && bar.Bottom < parameters.Top,
             "Инструменты и параметры находятся непосредственно под выделенной областью");
         check(bar.Right <= canvas.Width && bar.Left >= 0 && parameters.Bottom <= canvas.Height, "Обе панели целиком видны на экране");
@@ -45,9 +54,9 @@ internal static class RegionCaptureTests
         var input = canvas.Controls.OfType<TextBox>().Single(); input.Text = "Прямо на экране"; canvas.CommitText();
         check(doc.Items.Last().Tool == EditorTool.Text && doc.Items.Last().Start == new PointF(600, 220), "Ввод текста на экране захвата остаётся встроенным в снимок");
         canvas.DrawToBitmap(preview, canvas.ClientRectangle); preview.Save(Path.Combine(output, "region-editor-preview.png"), ImageFormat.Png);
-        canvas.Tool = EditorTool.Crop; Mouse(canvas, "OnMouseDown", 1080, 315); Mouse(canvas, "OnMouseMove", 1000, 315); Mouse(canvas, "OnMouseUp", 1000, 315); canvas.CommitCrop();
-        check(doc.Crop == new Rectangle(180, 100, 820, 430) && canvas.DisplayedCaptureBounds == doc.Crop, "Обрезка на экране сохраняет масштаб и положение оставшихся пикселей");
-        doc.Undo(); check(doc.Crop == new Rectangle(180, 100, 900, 430), "Отмена обрезки возвращает исходную рамку на экране");
+        canvas.Tool = EditorTool.Select; Mouse(canvas, "OnMouseDown", 1080, 315); Mouse(canvas, "OnMouseMove", 1000, 315); Mouse(canvas, "OnMouseUp", 1000, 315);
+        check(doc.Crop == new Rectangle(180, 100, 820, 430) && canvas.DisplayedCaptureBounds == doc.Crop, "Изменение рамки области доступно без инструмента обрезки и сохраняет положение пикселей");
+        doc.Undo(); check(doc.Crop == new Rectangle(180, 100, 900, 430), "Отмена изменения области возвращает исходную рамку на экране");
 
         var rows = new[] { new Size(700, 46), new Size(550, 50), new Size(700, 22) };
         var below = RegionPanelPlacement.Place(new(500, 200, 900, 400), new(0, 0, 1920, 1080), rows);
@@ -63,6 +72,10 @@ internal static class RegionCaptureTests
 
         using var regular = new EditorForm(TrayApplication.CreateDemo(), new AppSettings());
         check(regular.FormBorderStyle == FormBorderStyle.Sizable && regular.ShowInTaskbar, "Полный снимок по-прежнему использует обычное изменяемое окно редактора");
+        var fullTools = Field<Dictionary<EditorTool, ToolGroupButton>>(regular, "tools");
+        typeof(EditorForm).GetMethod("SelectTool", Private)!.Invoke(regular, [EditorTool.Crop]);
+        check(fullTools.ContainsKey(EditorTool.Crop) && Field<EditorCanvas>(regular, "canvas").Tool == EditorTool.Crop,
+            "Редактор полного снимка сохраняет кнопку и инструмент обрезки");
         canvas.Dispose();
 
         using var small = new EditorForm(new Bitmap(640, 480), new AppSettings(), new Rectangle(0, 0, 640, 480));

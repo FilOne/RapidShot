@@ -11,7 +11,7 @@ internal sealed partial class EditorCanvas : Control
         get => tool;
         set
         {
-            if (tool == value) return;
+            if (tool == value || desktopCoordinates && value == EditorTool.Crop) return;
             CommitText(); FinishObjectTransform(); StopBlurFeedback(); CancelCaptureResize(); dragging = false; Capture = false; pending = null;
             lastPenStrokeAt = 0;
             tool = value; cropDraft = value == EditorTool.Crop ? Document.Crop : null;
@@ -80,6 +80,7 @@ internal sealed partial class EditorCanvas : Control
     }
     public void ActivateTool(EditorTool newTool)
     {
+        if (desktopCoordinates && newTool == EditorTool.Crop) return;
         CancelCaptureResize(); CommitEdits(); CancelGesture(false); Tool = newTool;
         if (newTool != EditorTool.Select && Selected?.Tool != newTool) Selected = null;
         if (Selected == null && Document.Items.LastOrDefault() is { } last && last.Tool == newTool) Selected = last;

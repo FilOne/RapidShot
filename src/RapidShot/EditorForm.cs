@@ -68,6 +68,7 @@ internal sealed partial class EditorForm : Form
             [new(EditorTool.Crop, "⌗", "Обрезка за края", "C")] ];
         foreach (var group in groups)
         {
+            if (regionBounds.HasValue && group.Any(definition => definition.Tool == EditorTool.Crop)) continue;
             var button = new ToolGroupButton(group); button.ToolChosen += SelectTool;
             foreach (var definition in group) { tools[definition.Tool] = button; toolNames[definition.Tool] = definition.Name; }
             toolBar.Controls.Add(button);
@@ -261,6 +262,7 @@ internal sealed partial class EditorForm : Form
     }
     private void SelectTool(EditorTool tool)
     {
+        if (!tools.ContainsKey(tool)) return;
         canvas.ActivateTool(tool); HighlightTool(tool); UpdatePropertyVisibility();
         status.Text = tool switch
         {
