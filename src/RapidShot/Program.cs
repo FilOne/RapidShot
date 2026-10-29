@@ -13,7 +13,8 @@ internal static class Program
             return;
         }
         Application.ThreadException += (_, e) => MessageBox.Show(e.Exception.Message, "RapidShot — ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        using var context = new TrayApplication(args);
-        Application.Run(context);
+        Theme.Initialize(AppSettings.Load().ThemeMode);
+        try { using var context = new TrayApplication(args); Application.Run(context); }
+        finally { Theme.Shutdown(); }
     }
 }

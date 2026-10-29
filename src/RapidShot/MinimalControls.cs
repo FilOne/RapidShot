@@ -39,7 +39,7 @@ internal class IconButton : Button
         g.Clear(Parent?.BackColor is { A: 255 } background ? background : Theme.Panel);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         using var path = FloatingBar.Rounded(new RectangleF(1, 1, Width - 2, Height - 2), 5);
-        using var fill = new SolidBrush(pressed ? Theme.Raised : hovered || selected ? Color.FromArgb(66, 71, 78) : BackColor); g.FillPath(fill, path);
+        using var fill = new SolidBrush(pressed ? Theme.Raised : hovered || selected ? Theme.Hover : BackColor); g.FillPath(fill, path);
         if (selected || Focused && ShowFocusCues) { using var outline = new Pen(Theme.Accent, 1); g.DrawPath(outline, path); }
         var color = Enabled ? ForeColor : Theme.Disabled;
         var iconX = ShowText ? 8 : (Width - 20f) / 2;
@@ -82,7 +82,7 @@ internal sealed class FloatingBar : FlowLayoutPanel
     {
         base.OnPaint(e); e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using var path = Rounded(new RectangleF(.5f, .5f, Width - 1, Height - 1), 8);
-        using var pen = new Pen(Color.FromArgb(65, 69, 76), 1); e.Graphics.DrawPath(pen, path);
+        using var pen = new Pen(Theme.Border, 1); e.Graphics.DrawPath(pen, path);
     }
 }
 

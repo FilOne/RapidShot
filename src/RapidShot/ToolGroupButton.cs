@@ -16,8 +16,9 @@ internal sealed class ToolGroupButton : IconButton
         AutoSize = false; Size = new(34, 34); Padding = Padding.Empty; Margin = new Padding(1, 0, 1, 0);
         Font = new Font("Segoe UI", 14); FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0;
         BackColor = Theme.Panel; ForeColor = Theme.Foreground; Cursor = Cursors.Hand;
-        FlatAppearance.MouseOverBackColor = Color.FromArgb(61, 68, 87);
+        FlatAppearance.MouseOverBackColor = Theme.Hover;
         menu = new ContextMenuStrip { BackColor = Theme.Panel, ForeColor = Theme.Foreground, ShowImageMargin = false, ShowCheckMargin = true };
+        Theme.Menu(menu);
         foreach (var definition in definitions)
         {
             var item = new ToolStripMenuItem($"{definition.Icon}  {definition.Name}    {definition.Shortcut}") { Tag = definition.Tool };

@@ -2,12 +2,15 @@ using System.Text.Json;
 
 namespace RapidShot;
 
+public enum AppTheme { System, Dark, Light }
+
 public sealed class AppSettings
 {
     public uint Modifiers { get; set; } = 2 | 4;
     public int Key { get; set; } = (int)Keys.S;
     public bool CaptureRegion { get; set; } = true;
     public string? CaptureDeviceName { get; set; }
+    public AppTheme ThemeMode { get; set; } = AppTheme.System;
     public string SaveDirectory { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "RapidShot");
     public static string SettingsPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RapidShot", "settings.json");
     public string HotkeyLabel => FormatHotkey(Modifiers, (Keys)Key);
@@ -31,6 +34,7 @@ public sealed class AppSettings
             var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsPath)) ?? new();
             if (!Enum.IsDefined((Keys)settings.Key) || settings.Key == 0 || settings.Modifiers > 15) return new();
             if (string.IsNullOrWhiteSpace(settings.SaveDirectory)) settings.SaveDirectory = new AppSettings().SaveDirectory;
+            if (!Enum.IsDefined(settings.ThemeMode)) settings.ThemeMode = AppTheme.System;
             return settings;
         }
         catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { return new(); }

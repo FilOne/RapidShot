@@ -5,16 +5,16 @@ internal sealed class SettingsDialog : Form
     public AppSettings Result { get; private set; }
     private readonly TextBox shortcut;
     private readonly CheckBox ctrl, alt, shift, win;
-    private readonly ComboBox key, mode;
+    private readonly ComboBox key, mode, appearance;
     private readonly TextBox folder;
     private readonly Label feedback;
     private readonly Func<AppSettings, string?> apply;
     public SettingsDialog(AppSettings current, Func<AppSettings, string?> apply, IReadOnlyList<CaptureDisplay>? displays = null)
     {
         Result = current; this.apply = apply;
-        Theme.Apply(this); Text = "RapidShot — настройки"; ClientSize = new(590, 485);
+        Theme.Apply(this); Text = "RapidShot — настройки"; ClientSize = new(590, 565);
         FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; MinimizeBox = false;
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 11 };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 13 };
         layout.Controls.Add(new Label { Text = "Быстрее, чем искать кнопку", AutoSize = true, Font = new Font("Segoe UI", 17, FontStyle.Bold), Margin = new Padding(0, 0, 0, 15) });
         layout.Controls.Add(Theme.Label("Горячая клавиша для снимка"));
         var modifiers = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
@@ -40,6 +40,9 @@ internal sealed class SettingsDialog : Form
         mode.Items.AddRange(choices);
         mode.SelectedItem = choices.First(x => x.Region == current.CaptureRegion && (x.Region || string.Equals(x.DeviceName ?? "", current.CaptureDeviceName ?? "", StringComparison.OrdinalIgnoreCase)));
         mode.AccessibleName = "Экран или область для горячей клавиши"; layout.Controls.Add(mode);
+        layout.Controls.Add(Theme.Label("Оформление интерфейса"));
+        appearance = Theme.ComboBox(); appearance.Dock = DockStyle.Fill; appearance.AccessibleName = "Тема оформления";
+        appearance.Items.AddRange(["Как в системе", "Темный", "Светлый"]); appearance.SelectedIndex = (int)current.ThemeMode; layout.Controls.Add(appearance);
         layout.Controls.Add(Theme.Label("Папка сохранения по умолчанию"));
         var folderRow = new TableLayoutPanel { AutoSize = true, ColumnCount = 2, Dock = DockStyle.Fill };
         folderRow.ColumnStyles.Add(new(SizeType.Percent, 100)); folderRow.ColumnStyles.Add(new(SizeType.AutoSize));
@@ -48,7 +51,7 @@ internal sealed class SettingsDialog : Form
         folderRow.Controls.Add(Theme.Button("Обзор…", (_, _) => { using var dialog = new FolderBrowserDialog { InitialDirectory = folder.Text }; if (dialog.ShowDialog(this) == DialogResult.OK) folder.Text = dialog.SelectedPath; }));
         layout.Controls.Add(folderRow);
         layout.Controls.Add(new Label { Text = "После запуска приложение находится в трее.\nДвойной щелчок по значку — новый снимок. Выход — через меню трея.", AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(4, 14, 4, 8) });
-        feedback = new Label { AutoSize = true, MaximumSize = new(530, 0), ForeColor = Color.Salmon }; layout.Controls.Add(feedback);
+        feedback = new Label { AutoSize = true, MaximumSize = new(530, 0), ForeColor = Theme.Error }; layout.Controls.Add(feedback);
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
         var save = Theme.Button("Сохранить", Save, true);
         var close = Theme.Button("Отмена", (_, _) => Close()); buttons.Controls.AddRange([save, close]); layout.Controls.Add(buttons);
@@ -61,7 +64,7 @@ internal sealed class SettingsDialog : Form
         {
             var path = Path.GetFullPath(Environment.ExpandEnvironmentVariables(folder.Text.Trim()));
             var choice = (CaptureChoice)mode.SelectedItem!;
-            var settings = new AppSettings { Modifiers = Modifiers(), Key = (int)(Keys)key.SelectedItem!, CaptureRegion = choice.Region, CaptureDeviceName = choice.DeviceName, SaveDirectory = path };
+            var settings = new AppSettings { Modifiers = Modifiers(), Key = (int)(Keys)key.SelectedItem!, CaptureRegion = choice.Region, CaptureDeviceName = choice.DeviceName, SaveDirectory = path, ThemeMode = (AppTheme)appearance.SelectedIndex };
             var error = apply(settings);
             if (error != null) { feedback.Text = error; return; }
             Result = settings; DialogResult = DialogResult.OK; Close();

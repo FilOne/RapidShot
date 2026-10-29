@@ -15,6 +15,7 @@ internal sealed class TrayApplication : ApplicationContext
     public TrayApplication(string[] args)
     {
         var menu = new ContextMenuStrip();
+        Theme.Menu(menu);
         captureItem = new("Снимок области", null, async (_, _) => await Capture(true));
         menu.Items.Add(captureItem);
         menu.Items.Add("Снимок всех экранов", null, async (_, _) => await Capture(false));
@@ -123,7 +124,7 @@ internal sealed class TrayApplication : ApplicationContext
                     if (changed) hotkey.Register(settings.Modifiers, settings.Key);
                     return "Не удалось сохранить настройки: " + ex.Message;
                 }
-                settings = candidate; hotkeyRegistered = true; UpdateTray(); return null;
+                settings = candidate; hotkeyRegistered = true; Theme.SetMode(settings.ThemeMode); UpdateTray(); return null;
             });
             settingsDialog = dialog; dialog.ShowDialog();
         }

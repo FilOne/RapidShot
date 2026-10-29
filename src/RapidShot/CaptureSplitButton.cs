@@ -58,9 +58,9 @@ internal sealed class CaptureSplitButton : UserControl
             using var path = FloatingBar.Rounded(new RectangleF(1, 1, owner.Width - 2, owner.Height - 2), 5);
             var background = !Enabled ? Theme.Raised : pressed ? Color.FromArgb(44, 163, 211) : hovered ? Color.FromArgb(91, 202, 245) : Theme.Accent;
             using var fill = new SolidBrush(background); g.FillPath(fill, path);
-            var color = Enabled ? Theme.Background : Theme.Disabled;
+            var color = Enabled ? Theme.OnAccent : Theme.Disabled;
             var split = owner.PrimaryAction.Width;
-            using var line = new Pen(Color.FromArgb(65, Theme.Background), 1);
+            using var line = new Pen(Color.FromArgb(65, Theme.OnAccent), 1);
             g.DrawLine(line, split + .5f, 6, split + .5f, owner.Height - 6);
             if (dropdown)
             {

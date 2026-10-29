@@ -4,7 +4,7 @@ using System.Numerics;
 
 namespace RapidShot;
 
-internal sealed partial class EditorForm : Form
+internal sealed partial class EditorForm : Form, IThemeAware
 {
     private readonly ScreenshotDocument document;
     private readonly EditorCanvas canvas;
@@ -92,6 +92,7 @@ internal sealed partial class EditorForm : Form
         }
         colorMenu.Items.Add(new ToolStripSeparator()); colorMenu.Items.Add("Другой цвет…", null, (_, _) => { using var dialog = new ColorDialog { Color = canvas.Ink, FullOpen = true }; if (dialog.ShowDialog(this) == DialogResult.OK) SetColor(dialog.Color); });
         colorMenu.BackColor = captureMenu.BackColor = Theme.Panel; colorMenu.ForeColor = captureMenu.ForeColor = Theme.Foreground;
+        Theme.Menu(captureMenu); Theme.Menu(colorMenu);
         customColor = new IconButton(UiIcon.Color, "Цвет  ⌄") { ShowText = true, Width = 94, Height = 36 };
         customColor.Click += (_, _) => colorMenu.Show(customColor, Point.Empty, ToolStripDropDownDirection.AboveRight);
         customColor.FlatAppearance.BorderColor = canvas.Ink; customColor.AccessibleName = "Другой цвет"; tips.SetToolTip(customColor, "Другой цвет");
@@ -148,7 +149,12 @@ internal sealed partial class EditorForm : Form
         SizeChanged += (_, _) => { if (!isRegionCapture) FitBars(); }; FitBars();
         if (regionBounds.HasValue) InitializeRegionCapture(regionBounds.Value, root);
     }
-    private static Control Separator() => new Panel { Width = 1, Height = 24, BackColor = Color.FromArgb(74, 78, 85), Margin = new Padding(6, 5, 6, 5) };
+    private static Control Separator() => new Panel { Width = 1, Height = 24, BackColor = Theme.Separator, Margin = new Padding(6, 5, 6, 5) };
+    void IThemeAware.RefreshTheme()
+    {
+        SetMenuIcon(save, UiIcon.Save); SetMenuIcon(upload, uploading == null ? UiIcon.Upload : UiIcon.Cancel);
+        HighlightTool(canvas.Tool); UpdateArrowChoice(); canvas.RefreshTheme();
+    }
     private void ShowCaptureMenu()
     {
         captureMenu.Show(capture.MenuAction, Point.Empty, ToolStripDropDownDirection.AboveRight);
@@ -222,7 +228,7 @@ internal sealed partial class EditorForm : Form
     }
     private void UpdateArrowChoice()
     {
-        foreach (var choice in new[] { arrowOne, arrowTwo }) { choice.BackColor = choice.Checked ? Theme.Accent : Theme.Raised; choice.ForeColor = choice.Checked ? Theme.Background : Theme.Foreground; }
+        foreach (var choice in new[] { arrowOne, arrowTwo }) { choice.BackColor = choice.Checked ? Theme.Accent : Theme.Raised; choice.ForeColor = choice.Checked ? Theme.OnAccent : Theme.Foreground; }
     }
     private void UpdateHistory() { undo.Enabled = document.CanUndo || canvas.HasCropChanges || canvas.IsResizingCapture; redo.Enabled = document.CanRedo; }
     private void Undo()

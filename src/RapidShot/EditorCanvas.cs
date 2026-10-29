@@ -136,7 +136,7 @@ internal sealed partial class EditorCanvas : Control
         }
         else
         {
-            using var shadow = new SolidBrush(Color.FromArgb(12, 14, 20));
+            using var shadow = new SolidBrush(Theme.Shadow);
             g.FillRectangle(shadow, imageBounds.X + 7, imageBounds.Y + 9, imageBounds.Width, imageBounds.Height);
         }
         var viewportState = g.Save();
@@ -250,6 +250,7 @@ internal sealed partial class EditorCanvas : Control
             previous?.Dispose();
         }
         textEditor.ForeColor = textDraft.Color;
+        textEditor.BackColor = textDraft.Color.GetBrightness() > .75f ? Color.FromArgb(42, 45, 50) : textDraft.Color.GetBrightness() < .25f ? Color.FromArgb(245, 247, 250) : Theme.Raised;
         var x = (int)Math.Round(imageBounds.X + (textDraft.Start.X - Document.Crop.X) * zoom);
         var y = (int)Math.Round(imageBounds.Y + (textDraft.Start.Y - Document.Crop.Y) * zoom);
         x = Math.Clamp(x, 0, Math.Max(0, ClientSize.Width - 20)); y = Math.Clamp(y, 0, Math.Max(0, ClientSize.Height - 20));
@@ -280,6 +281,10 @@ internal sealed partial class EditorCanvas : Control
         }
         Rebuild(); SelectionChanged?.Invoke();
         HintChanged?.Invoke("Текст: щелчок инструментом T или двойной щелчок инструментом выбора — редактировать.");
+    }
+    internal void RefreshTheme()
+    {
+        BackColor = Theme.Background; PositionTextEditor(); Invalidate();
     }
     private void CancelText()
     {
