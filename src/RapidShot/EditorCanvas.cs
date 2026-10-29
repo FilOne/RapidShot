@@ -12,7 +12,7 @@ internal sealed partial class EditorCanvas : Control
         set
         {
             if (tool == value) return;
-            CommitText(); FinishObjectTransform(); StopBlurFeedback(); dragging = false; Capture = false; pending = null;
+            CommitText(); FinishObjectTransform(); StopBlurFeedback(); CancelCaptureResize(); dragging = false; Capture = false; pending = null;
             lastPenStrokeAt = 0;
             tool = value; cropDraft = value == EditorTool.Crop ? Document.Crop : null;
             cropDragEdge = CropEdge.None; CropStateChanged?.Invoke(); Invalidate();
@@ -80,7 +80,7 @@ internal sealed partial class EditorCanvas : Control
     }
     public void ActivateTool(EditorTool newTool)
     {
-        CommitEdits(); CancelGesture(false); Tool = newTool;
+        CancelCaptureResize(); CommitEdits(); CancelGesture(false); Tool = newTool;
         if (newTool != EditorTool.Select && Selected?.Tool != newTool) Selected = null;
         if (Selected == null && Document.Items.LastOrDefault() is { } last && last.Tool == newTool) Selected = last;
         SelectionChanged?.Invoke(); Invalidate();
@@ -128,12 +128,18 @@ internal sealed partial class EditorCanvas : Control
         EnsurePreview();
         if (preview == null) return;
         var g = e.Graphics;
-        if (desktopCoordinates) g.DrawImageUnscaled(desktopBackdrop!, Point.Empty);
+        if (desktopCoordinates)
+        {
+            g.DrawImageUnscaled(desktopBackdrop!, Point.Empty);
+            if (captureResizeDraft is { } area) g.DrawImage(Document.Original, area, area, GraphicsUnit.Pixel);
+        }
         else
         {
             using var shadow = new SolidBrush(Color.FromArgb(12, 14, 20));
             g.FillRectangle(shadow, imageBounds.X + 7, imageBounds.Y + 9, imageBounds.Width, imageBounds.Height);
         }
+        var viewportState = g.Save();
+        if (captureResizeDraft is { } draft) g.SetClip(draft, CombineMode.Intersect);
         if (preview.Width == (int)Math.Round(imageBounds.Width) && preview.Height == (int)Math.Round(imageBounds.Height))
             g.DrawImageUnscaled(preview, Point.Round(imageBounds.Location));
         else
@@ -142,7 +148,7 @@ internal sealed partial class EditorCanvas : Control
             g.DrawImage(preview, imageBounds);
         }
         var state = g.Save();
-        g.SetClip(imageBounds);
+        g.SetClip(imageBounds, CombineMode.Intersect);
         g.TranslateTransform(imageBounds.X, imageBounds.Y); g.ScaleTransform(zoom, zoom); g.TranslateTransform(-Document.Crop.X, -Document.Crop.Y);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         if (pending != null)
@@ -155,11 +161,12 @@ internal sealed partial class EditorCanvas : Control
             else pending.Draw(g);
         }
         g.Restore(state);
-        DrawObjectSelection(g);
+        g.Restore(viewportState);
+        if (!IsResizingCapture) DrawObjectSelection(g);
         DrawCropOverlay(g);
         if (desktopCoordinates)
         {
-            if (Tool != EditorTool.Crop) SelectionFrame.Draw(g, imageBounds);
+            if (Tool != EditorTool.Crop) SelectionFrame.Draw(g, DisplayedCaptureBounds);
         }
         else TextRenderer.DrawText(g, $"{Document.Crop.Width} × {Document.Crop.Height} px   ·   {zoom:P0}", Font, new Point((int)imageBounds.X, (int)imageBounds.Bottom + 9), Theme.Muted);
     }
@@ -172,6 +179,7 @@ internal sealed partial class EditorCanvas : Control
         Focus();
         if (e.Button != MouseButtons.Left) return;
         shiftConstraint = (readModifiers() & Keys.Shift) != 0;
+        if (StartCaptureResize(e)) return;
         if (Tool == EditorTool.Crop) { StartCropDrag(e); return; }
         if (!IsEditingText && StartHandleDrag(e)) return;
         if (!imageBounds.Contains(e.Location)) return;
@@ -305,6 +313,9 @@ internal sealed partial class EditorCanvas : Control
     {
         base.OnMouseMove(e);
         if (!acceptsInput) return;
+        if (IsResizingCapture) { MoveCaptureResize(e.Location); return; }
+        if (desktopCoordinates && Tool != EditorTool.Crop && !dragging && HitCropEdge(e.Location) is var edge && edge != CropEdge.None)
+        { var edgeCursor = CropCursor(edge); if (Cursor != edgeCursor) Cursor = edgeCursor; return; }
         if (Tool == EditorTool.Crop) { MoveCropDrag(e); return; }
         var handle = IsEditingText ? ObjectHandle.None : HitObjectHandle(e.Location);
         var cursor = ObjectCursor(transformOriginal != null ? transformHandle : handle);
@@ -326,6 +337,7 @@ internal sealed partial class EditorCanvas : Control
     {
         base.OnMouseUp(e);
         if (!acceptsInput) return;
+        if (IsResizingCapture && e.Button == MouseButtons.Left) { MoveCaptureResize(e.Location); CommitCaptureResize(); return; }
         if (Tool == EditorTool.Crop) { EndCropDrag(e); return; }
         if (!dragging || e.Button != MouseButtons.Left) return;
         pointerPosition = ToImage(e.Location);
@@ -358,6 +370,7 @@ internal sealed partial class EditorCanvas : Control
     }
     public void CancelGesture(bool clearSelection = true)
     {
+        CancelCaptureResize();
         lastPenStrokeAt = 0;
         CancelText();
         FinishObjectTransform();
@@ -369,6 +382,7 @@ internal sealed partial class EditorCanvas : Control
     protected override void OnMouseCaptureChanged(EventArgs e)
     {
         base.OnMouseCaptureChanged(e);
+        if (!Capture) CancelCaptureResize();
         if (!Capture && dragging) { FinishObjectTransform(); StopBlurFeedback(); dragging = false; cropDragEdge = CropEdge.None; pending = null; Invalidate(); }
     }
     protected override void Dispose(bool disposing)

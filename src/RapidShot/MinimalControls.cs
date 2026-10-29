@@ -88,6 +88,12 @@ internal sealed class FloatingBar : FlowLayoutPanel
 
 internal static class UiGlyph
 {
+    public static Bitmap CreateImage(UiIcon icon, Color color, int size = 20)
+    {
+        var image = new Bitmap(size, size, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        using var g = Graphics.FromImage(image); g.Clear(Color.Transparent); g.SmoothingMode = SmoothingMode.AntiAlias;
+        Draw(g, icon, new RectangleF(0, 0, size, size), color, color); return image;
+    }
     public static UiIcon ForTool(EditorTool tool) => Enum.TryParse<UiIcon>(tool.ToString(), out var icon) ? icon : UiIcon.None;
     public static void Draw(Graphics g, UiIcon icon, RectangleF box, Color color, Color accent)
     {
@@ -113,8 +119,15 @@ internal static class UiGlyph
             case UiIcon.Copy: g.DrawRectangle(p, 7, 7, 10, 10); Lines(new(4, 13), new(3, 13), new(3, 3), new(13, 3), new(13, 4)); break;
             case UiIcon.Upload: Lines(new(3, 12), new(3, 17), new(17, 17), new(17, 12)); Lines(new(6, 7), new(10, 3), new(14, 7)); g.DrawLine(p, 10, 3, 10, 13); break;
             case UiIcon.Search: g.DrawEllipse(p, 3, 3, 10, 10); g.DrawLine(p, 12, 12, 17, 17); g.FillEllipse(brush, 6.5f, 6.5f, 3, 3); break;
-            case UiIcon.Undo: g.DrawArc(p, 5, 5, 12, 12, 215, 265); Lines(new(3, 9), new(4, 3), new(9, 4)); break;
-            case UiIcon.Redo: g.DrawArc(p, 3, 5, 12, 12, 60, 265); Lines(new(11, 4), new(16, 3), new(17, 9)); break;
+            case UiIcon.Undo:
+            case UiIcon.Redo:
+                if (icon == UiIcon.Redo) { g.TranslateTransform(20, 0); g.ScaleTransform(-1, 1); }
+                using (var curve = new GraphicsPath())
+                {
+                    curve.AddLine(4, 8, 10, 8); curve.AddBezier(10, 8, 14, 8, 17, 10, 17, 14); curve.AddLine(17, 14, 17, 16);
+                    g.DrawPath(p, curve);
+                }
+                Lines(new(8, 4), new(4, 8), new(8, 12)); break;
             case UiIcon.Delete: g.DrawLine(p, 3, 5, 17, 5); Lines(new(5, 5), new(6, 17), new(14, 17), new(15, 5)); Lines(new(7, 5), new(7, 2), new(13, 2), new(13, 5)); g.DrawLine(p, 8, 8, 8, 14); g.DrawLine(p, 12, 8, 12, 14); break;
             case UiIcon.Camera: Lines(new(3, 6), new(6, 6), new(7, 3), new(13, 3), new(14, 6), new(17, 6), new(17, 16), new(3, 16), new(3, 6)); g.DrawEllipse(p, 7, 7, 6, 6); break;
             case UiIcon.Color: using (var ink = new SolidBrush(accent)) { g.FillEllipse(ink, 3, 3, 14, 14); g.DrawEllipse(p, 3, 3, 14, 14); } break;

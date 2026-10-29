@@ -43,8 +43,10 @@ internal sealed partial class EditorForm : Form
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 4, ColumnCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
         root.RowStyles.Add(new(SizeType.Percent, 100)); root.RowStyles.Add(new(SizeType.Absolute, 52)); root.RowStyles.Add(new(SizeType.Absolute, 56)); root.RowStyles.Add(new(SizeType.Absolute, 20));
         root.ColumnStyles.Add(new(SizeType.Percent, 100));
-        save = new ToolStripMenuItem("Сохранить…") { ShortcutKeyDisplayString = "Ctrl+S" }; save.Click += (_, _) => SaveAndFinish();
-        upload = new ToolStripMenuItem("Загрузить на Yapx") { AccessibleName = "Загрузить на Yapx" }; upload.Click += async (_, _) => await Upload();
+        captureMenu.Renderer = new MinimalMenuRenderer(); captureMenu.ImageScalingSize = new Size(20, 20);
+        save = new ToolStripMenuItem("Сохранить…") { ShortcutKeyDisplayString = "Ctrl+S", ImageScaling = ToolStripItemImageScaling.None }; save.Click += (_, _) => SaveAndFinish();
+        upload = new ToolStripMenuItem("Загрузить на Yapx") { AccessibleName = "Загрузить на Yapx", ImageScaling = ToolStripItemImageScaling.None }; upload.Click += async (_, _) => await Upload();
+        SetMenuIcon(save, UiIcon.Save); SetMenuIcon(upload, UiIcon.Upload);
         captureMenu.Items.AddRange([save, upload]);
         google = new IconButton(UiIcon.Search, "Поиск в Google"); google.Click += async (_, _) => await SearchGoogle(); tips.SetToolTip(google, "Поиск по снимку · Google Lens");
         workspace = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 1, Margin = Padding.Empty };
@@ -152,6 +154,10 @@ internal sealed partial class EditorForm : Form
     {
         captureMenu.Show(capture.MenuAction, Point.Empty, ToolStripDropDownDirection.AboveRight);
     }
+    private static void SetMenuIcon(ToolStripMenuItem item, UiIcon icon)
+    {
+        var previous = item.Image; item.Image = UiGlyph.CreateImage(icon, Theme.Foreground); previous?.Dispose();
+    }
     private static Panel ParameterBox(string title, Control input, int width, out Label label)
     {
         var panel = new Panel { Size = new(width, 38), Margin = new Padding(4, 0, 4, 0) };
@@ -219,9 +225,10 @@ internal sealed partial class EditorForm : Form
     {
         foreach (var choice in new[] { arrowOne, arrowTwo }) { choice.BackColor = choice.Checked ? Theme.Accent : Theme.Raised; choice.ForeColor = choice.Checked ? Theme.Background : Theme.Foreground; }
     }
-    private void UpdateHistory() { undo.Enabled = document.CanUndo || canvas.HasCropChanges; redo.Enabled = document.CanRedo; }
+    private void UpdateHistory() { undo.Enabled = document.CanUndo || canvas.HasCropChanges || canvas.IsResizingCapture; redo.Enabled = document.CanRedo; }
     private void Undo()
     {
+        if (canvas.CancelCaptureResize()) return;
         if (canvas.HasCropChanges) { canvas.CancelCrop(); return; }
         canvas.CommitText(); canvas.CancelGesture(false); document.Undo();
     }
@@ -344,7 +351,7 @@ internal sealed partial class EditorForm : Form
         canvas.SetInputEnabled(false); save.Enabled = copy.Enabled = false;
         foreach (var button in tools.Values.Distinct()) button.Enabled = false;
         parameterBar.Enabled = false; delete.Enabled = false; undo.Enabled = redo.Enabled = false;
-        google.Enabled = false; upload.Text = "Отменить загрузку на Yapx"; status.Text = "Загрузка изображения на Yapx…";
+        google.Enabled = false; upload.Text = "Отменить загрузку на Yapx"; SetMenuIcon(upload, UiIcon.Cancel); status.Text = "Загрузка изображения на Yapx…";
         try
         {
             using var image = document.Render();
@@ -367,7 +374,7 @@ internal sealed partial class EditorForm : Form
             if (!IsDisposed)
             {
                 canvas.SetInputEnabled(true); save.Enabled = copy.Enabled = true;
-                upload.Text = "Загрузить на Yapx"; google.Enabled = capture.Enabled = true;
+                upload.Text = "Загрузить на Yapx"; SetMenuIcon(upload, UiIcon.Upload); google.Enabled = capture.Enabled = true;
                 workspace.Enabled = true;
                 foreach (var button in tools.Values.Distinct()) button.Enabled = true;
                 parameterBar.Enabled = true; UpdatePropertyVisibility(); UpdateHistory();
@@ -401,6 +408,7 @@ internal sealed partial class EditorForm : Form
         if (keyData == (Keys.Control | Keys.Shift | Keys.Z) || keyData == (Keys.Control | Keys.Y)) { canvas.CommitText(); canvas.CancelGesture(false); document.Redo(); return true; }
         if (keyData == Keys.Escape)
         {
+            if (canvas.CancelCaptureResize()) return true;
             if (isRegionCapture && !canvas.HasCropChanges && canvas.Selected == null) Close();
             else canvas.CancelGesture();
             return true;
@@ -422,7 +430,7 @@ internal sealed partial class EditorForm : Form
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { tips.Dispose(); captureMenu.Dispose(); foreach (ToolStripItem item in colorMenu.Items) item.Image?.Dispose(); colorMenu.Dispose(); canvas.Dispose(); document.Dispose(); }
+        if (disposing) { tips.Dispose(); foreach (ToolStripItem item in captureMenu.Items) item.Image?.Dispose(); captureMenu.Dispose(); foreach (ToolStripItem item in colorMenu.Items) item.Image?.Dispose(); colorMenu.Dispose(); canvas.Dispose(); document.Dispose(); }
         base.Dispose(disposing);
     }
 }

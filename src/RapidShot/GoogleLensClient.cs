@@ -10,7 +10,7 @@ internal sealed class GoogleLensClient : IDisposable
     public GoogleLensClient(HttpClient? client = null)
     {
         http = client ?? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, AutomaticDecompression = DecompressionMethods.All }) { Timeout = TimeSpan.FromSeconds(45) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("RapidShot/1.17");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("RapidShot/1.18");
     }
     public async Task<string> SearchAsync(byte[] png, Size dimensions, CancellationToken token = default)
     {

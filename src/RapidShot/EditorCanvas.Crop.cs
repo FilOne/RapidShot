@@ -90,7 +90,7 @@ internal sealed partial class EditorCanvas
         CropStateChanged?.Invoke(); Invalidate();
         if (Tool == EditorTool.Crop) HintChanged?.Invoke("Рамка сброшена. Потяните край или угол снимка. Enter — обрезать.");
     }
-    public void CommitEdits() { CommitText(); FinishObjectTransform(); CommitCrop(); }
+    public void CommitEdits() { CommitText(); FinishObjectTransform(); CommitCaptureResize(); CommitCrop(); }
     private void DrawCropOverlay(Graphics g)
     {
         if (Tool != EditorTool.Crop || !cropDraft.HasValue) return;

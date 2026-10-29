@@ -163,6 +163,12 @@ public sealed class ScreenshotDocument : IDisposable
         if (rectangle.Width < 2 || rectangle.Height < 2 || rectangle == Crop) return false;
         BeginChange(); Crop = rectangle; NotifyChanged(); return true;
     }
+    internal bool ResizeCaptureRegion(Rectangle rectangle)
+    {
+        rectangle.Intersect(new Rectangle(Point.Empty, Original.Size));
+        if (rectangle.Width < 2 || rectangle.Height < 2 || rectangle == Crop) return false;
+        BeginChange(); Crop = rectangle; NotifyChanged(); return true;
+    }
     public void Undo()
     {
         if (!CanUndo) return;

@@ -175,6 +175,8 @@ internal static class Program
         RegionCaptureTests.Run(Check, output);
         ButtonRenderingTests.Run(Check, output);
         CaptureActionTests.Run(Check, output);
+        CaptureResizeTests.Run(Check, output);
+        MenuIconTests.Run(Check, output);
         Console.WriteLine($"Проверок интерфейса пройдено: {checks}");
         Console.WriteLine("UI preview: " + output);
     }
