@@ -1,4 +1,6 @@
 using System.Drawing.Imaging;
+using System.Globalization;
+using System.Numerics;
 
 namespace RapidShot;
 
@@ -12,6 +14,8 @@ internal sealed class EditorForm : Form
     private readonly Dictionary<EditorTool, ToolGroupButton> tools = [];
     private readonly Dictionary<EditorTool, string> toolNames = [];
     private readonly NumericUpDown fontSize, pinSize;
+    private readonly PinNumberBox pinNumber;
+    private Guid? pinNumberId;
     private readonly ParameterSlider width, transparency;
     private readonly Label widthLabel, transparencyLabel;
     private readonly FlowLayoutPanel parameterBar, strokeControls, colorControls, arrowEnds, cropControls, pinControls;
@@ -111,6 +115,12 @@ internal sealed class EditorForm : Form
         pinSize = new NumericUpDown { Minimum = 16, Maximum = 160, Value = 48, BackColor = Theme.Raised, ForeColor = Theme.Foreground, AccessibleName = "Размер пина" };
         pinSize.ValueChanged += (_, _) => { canvas.PinSize = (float)pinSize.Value; if (!updatingStyle) canvas.UpdateSelectedStyle(); };
         pinControls.Controls.Add(ParameterBox("Размер пина, px", pinSize, 112, out _));
+        pinNumber = new PinNumberBox { BackColor = Theme.Raised, ForeColor = Theme.Foreground, AccessibleName = "Номер пина", Text = "", MaxLength = 0 };
+        pinNumber.AcceptEdit += () => { CommitPinNumber(); canvas.Focus(); };
+        pinNumber.CancelEdit += () => { SyncPinNumber(true); canvas.Focus(); };
+        pinNumber.Leave += (_, _) => CommitPinNumber();
+        tips.SetToolTip(pinNumber, "Целое число от 1. Enter — применить, Esc — отменить. Меняется только выбранный пин.");
+        pinControls.Controls.Add(ParameterBox("Номер пина", pinNumber, 120, out _));
         nextPin = new Label { Size = new(176, 36), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, ForeColor = Theme.Muted, Margin = new Padding(8, 0, 4, 0), AccessibleName = "Следующий номер пина" };
         pinControls.Controls.Add(nextPin); parameterBar.Controls.Add(pinControls);
         recognizeShapes = new CheckBox { Text = "Ровные фигуры", Checked = true, Width = 150, Height = 36, Margin = new Padding(8, 0, 4, 0), ForeColor = Theme.Foreground, AccessibleName = "Распознавать круги и стрелки" };
@@ -137,6 +147,34 @@ internal sealed class EditorForm : Form
         input.Dock = DockStyle.Bottom; input.Margin = Padding.Empty; panel.Controls.AddRange([input, label]); return panel;
     }
     private EditorTool ParameterTool => canvas.Selected?.Tool ?? canvas.Tool;
+    private void SyncPinNumber(bool force = false)
+    {
+        var selected = canvas.Selected is { Tool: EditorTool.Pin } pin ? pin : null;
+        pinNumber.Enabled = selected != null;
+        if (force || !pinNumber.Focused || pinNumberId != selected?.Id)
+            pinNumber.Text = selected?.PinNumber.ToString(CultureInfo.InvariantCulture) ?? "";
+        pinNumberId = selected?.Id;
+    }
+    private void CommitPinNumber()
+    {
+        if (pinNumberId == null || document.Items.FirstOrDefault(x => x.Id == pinNumberId && x.Tool == EditorTool.Pin) is not { } pin) return;
+        if (!BigInteger.TryParse(pinNumber.Text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var number) || number < BigInteger.One)
+        {
+            SyncPinNumber(true); status.Text = "Номер пина должен быть целым числом от 1. Прежний номер сохранён."; return;
+        }
+        document.SetPinNumber(pin, number); SyncPinNumber(true);
+    }
+    private sealed class PinNumberBox : TextBox
+    {
+        public event Action? AcceptEdit;
+        public event Action? CancelEdit;
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == Keys.Enter) { AcceptEdit?.Invoke(); return true; }
+            if (keyData == Keys.Escape) { CancelEdit?.Invoke(); return true; }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+    }
     private void SyncStyle()
     {
         if (canvas.Selected is { } selected)
@@ -185,6 +223,7 @@ internal sealed class EditorForm : Form
         strokeControls.Visible = !cropping && (strokes || context == EditorTool.Blur); transparencyControl.Visible = strokes;
         recognizeShapes.Visible = !cropping && canvas.Tool == EditorTool.Pen;
         pinControls.Visible = !cropping && context == EditorTool.Pin;
+        SyncPinNumber();
         nextPin.Text = $"Следующий: {document.NextPinNumber}";
         tips.SetToolTip(nextPin, nextPin.Text);
         UpdateSliderLabels(); applyCrop.Enabled = resetCrop.Enabled = canvas.HasCropChanges;
@@ -207,7 +246,7 @@ internal sealed class EditorForm : Form
             EditorTool.Crop => "Потяните край или угол снимка. Enter — обрезать, Esc — сбросить.",
             EditorTool.Blur => "Выделите область для размытия. Маркеры меняют размер, ползунок снизу — силу эффекта.",
             EditorTool.Pen => "Рисуйте: замкнутый круг или стрелка выравниваются при отпускании мыши. Маркеры меняют размер.",
-            EditorTool.Pin => "Щелчок ставит следующий пин. Цвет и размер — снизу. V — перенос, Delete — удалить.",
+            EditorTool.Pin => "Щелчок ставит следующий пин. Цвет, размер и номер — снизу. V — перенос, Delete — удалить.",
             _ => "Параметры снизу изменяют активную пометку. Esc — снять выделение."
         };
     }
@@ -215,7 +254,7 @@ internal sealed class EditorForm : Form
     {
         try
         {
-            canvas.CommitEdits();
+            CommitPinNumber(); canvas.CommitEdits();
             Directory.CreateDirectory(settings.SaveDirectory);
             using var dialog = new SaveFileDialog { Filter = "Изображение PNG|*.png|Изображение JPEG|*.jpg", DefaultExt = "png", AddExtension = true, FileName = $"RapidShot_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}", InitialDirectory = settings.SaveDirectory, OverwritePrompt = true };
             if (dialog.ShowDialog(this) != DialogResult.OK) return false;
@@ -234,7 +273,7 @@ internal sealed class EditorForm : Form
     {
         try
         {
-            canvas.CommitEdits();
+            CommitPinNumber(); canvas.CommitEdits();
             using var image = document.Render();
             ImageClipboard.Write(image);
             exported = true; status.Text = "Изображение скопировано в буфер обмена.";
@@ -244,7 +283,7 @@ internal sealed class EditorForm : Form
     private async Task Upload()
     {
         if (uploading != null) { uploading.Cancel(); return; }
-        canvas.CommitEdits();
+        CommitPinNumber(); canvas.CommitEdits();
         using var cancellation = new CancellationTokenSource(); uploading = cancellation;
         workspace.Enabled = false;
         canvas.Enabled = false; save.Enabled = copy.Enabled = false;
@@ -287,6 +326,11 @@ internal sealed class EditorForm : Form
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         if (uploading != null) return base.ProcessCmdKey(ref msg, keyData);
+        if (pinNumber.Focused)
+        {
+            if (keyData == (Keys.Control | Keys.S)) CommitPinNumber();
+            else return base.ProcessCmdKey(ref msg, keyData);
+        }
         if (canvas.IsEditingText && canvas.ContainsFocus && keyData != (Keys.Control | Keys.S)) return base.ProcessCmdKey(ref msg, keyData);
         if (keyData == (Keys.Control | Keys.S)) { SaveImage(); return true; }
         if (keyData == (Keys.Control | Keys.C)) { CopyImage(); return true; }
@@ -303,7 +347,7 @@ internal sealed class EditorForm : Form
     private void ClosingEditor(object? sender, FormClosingEventArgs e)
     {
         if (uploading != null) { e.Cancel = true; uploading.Cancel(); return; }
-        canvas.CommitEdits();
+        CommitPinNumber(); canvas.CommitEdits();
         if (exported) return;
         var answer = MessageBox.Show(this, "Сохранить снимок перед закрытием редактора?", "RapidShot", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
         if (answer == DialogResult.Cancel || (answer == DialogResult.Yes && !SaveImage())) e.Cancel = true;

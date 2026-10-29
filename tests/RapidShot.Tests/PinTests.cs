@@ -15,13 +15,13 @@ internal static class PinTests
             var second = doc.AddPin(new(200, 100), Color.Blue, 48);
             check(first.PinNumber == 1 && second.PinNumber == 2 && doc.NextPinNumber == 3, "Пины нумеруются с единицы и увеличиваются на один");
             check(first.Clone().PinNumber == 1 && first.Clone().PinSize == 48 && first.Clone().Id == first.Id, "Копия пина сохраняет номер, размер и идентификатор");
-            doc.BeginChange(); doc.Items.Remove(first); doc.NotifyChanged();
+            doc.Remove(first);
             var third = doc.AddPin(new(300, 100), Color.Green, 48);
-            check(second.PinNumber == 2 && third.PinNumber == 3, "Удаление пина не перенумеровывает остальные и не сбрасывает счётчик");
-            doc.Undo(); check(doc.NextPinNumber == 3 && doc.Items.Single().PinNumber == 2, "Отмена добавления пина возвращает следующий номер");
-            doc.Redo(); check(doc.NextPinNumber == 4 && doc.Items[^1].PinNumber == 3, "Повтор возвращает прежний номер пина и продолжает счётчик");
+            check(second.PinNumber == 1 && third.PinNumber == 2, "Удаление первого пина сдвигает номера остальных и продолжает счётчик");
+            doc.Undo(); check(doc.NextPinNumber == 2 && doc.Items.Single().PinNumber == 1, "Отмена добавления пина возвращает следующий номер");
+            doc.Redo(); check(doc.NextPinNumber == 3 && doc.Items[^1].PinNumber == 2, "Повтор возвращает прежний номер пина и продолжает счётчик");
             doc.Undo(); var replacement = doc.AddPin(new(350, 150), Color.Red, 48);
-            check(replacement.PinNumber == 3 && !doc.CanRedo, "Новый пин после отмены использует отменённый номер");
+            check(replacement.PinNumber == 2 && !doc.CanRedo, "Новый пин после отмены использует отменённый номер");
             var large = BigInteger.Pow(10, 30) - 1;
             doc.Add(PinMarker.Create(large, new(400, 300), Color.Red, 48, doc.Crop));
             var next = doc.AddPin(new(400, 400), Color.Blue, 48);
@@ -78,7 +78,7 @@ internal static class PinTests
         var pin = document.Items[^1]; var start = pin.Start; var centerPoint = At(pin.Bounds.X + pin.Bounds.Width / 2, pin.Bounds.Y + pin.PinSize / 2);
         Mouse("OnMouseDown", centerPoint); Mouse("OnMouseMove", new(centerPoint.X + 20, centerPoint.Y + 20)); Mouse("OnMouseUp", new(centerPoint.X + 20, centerPoint.Y + 20));
         check(pin.Start.X > start.X && pin.Start.Y > start.Y && pin.PinNumber == number && pin.Id == id && document.NextPinNumber == 4, "Выбор / перенос перемещает пин, сохраняя его номер");
-        canvas.DeleteSelected(); check(document.Items.Count == 2 && document.NextPinNumber == 4, "Удаление выбранного пина сохраняет следующий номер");
+        canvas.DeleteSelected(); check(document.Items.Count == 2 && document.NextPinNumber == 3, "Удаление последнего пина освобождает его номер для следующего");
         document.Undo();
         typeof(EditorForm).GetMethod("SelectTool", Private)!.Invoke(form, [EditorTool.Pin]);
         using (var rendered = new Bitmap(content.Width, content.Height)) { content.DrawToBitmap(rendered, content.ClientRectangle); rendered.Save(Path.Combine(output, "pin-editor-preview.png"), ImageFormat.Png); }

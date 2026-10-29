@@ -155,6 +155,7 @@ internal static class Program
         TransformTests.Run(Check, output);
         FreehandTests.Run(Check, output);
         PinTests.Run(Check, output);
+        PinNumberTests.Run(Check, output);
         Console.WriteLine($"Проверок интерфейса пройдено: {checks}");
         Console.WriteLine("UI preview: " + output);
     }

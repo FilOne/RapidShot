@@ -83,7 +83,7 @@ internal sealed partial class EditorCanvas : Control
         FinishObjectTransform();
         CommitText();
         if (Selected == null) return;
-        Document.BeginChange(); Document.Items.Remove(Selected); Selected = null; Document.NotifyChanged(); SelectionChanged?.Invoke();
+        var item = Selected; Selected = null; Document.Remove(item); SelectionChanged?.Invoke();
     }
     public void UpdateSelectedStyle(bool recordUndo = true)
     {
@@ -273,7 +273,7 @@ internal sealed partial class EditorCanvas : Control
     {
         var item = Find(point); if (item == null) return;
         if (!erased) { Document.BeginChange(); erased = true; }
-        Document.Items.Remove(item); Document.NotifyChanged();
+        Document.Remove(item, recordUndo: false);
     }
     protected override void OnMouseMove(MouseEventArgs e)
     {

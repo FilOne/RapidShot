@@ -126,6 +126,26 @@ public sealed class ScreenshotDocument : IDisposable
         var item = PinMarker.Create(NextPinNumber, point, color, size, Crop);
         Add(item); return item;
     }
+    public bool Remove(Annotation item, bool recordUndo = true)
+    {
+        if (!Items.Contains(item)) return false;
+        if (recordUndo) BeginChange();
+        Items.Remove(item);
+        if (item.Tool == EditorTool.Pin)
+        {
+            foreach (var pin in Items.Where(x => x.Tool == EditorTool.Pin && x.PinNumber > item.PinNumber))
+                PinMarker.Renumber(pin, pin.PinNumber - BigInteger.One);
+            RecalculateNextPinNumber();
+        }
+        NotifyChanged(); return true;
+    }
+    public bool SetPinNumber(Annotation item, BigInteger number)
+    {
+        if (item.Tool != EditorTool.Pin || !Items.Contains(item) || number < BigInteger.One || item.PinNumber == number) return false;
+        BeginChange(); PinMarker.Renumber(item, number); RecalculateNextPinNumber(); NotifyChanged(); return true;
+    }
+    private void RecalculateNextPinNumber() => NextPinNumber = Items.Where(x => x.Tool == EditorTool.Pin)
+        .Select(x => x.PinNumber).DefaultIfEmpty(BigInteger.Zero).Max() + BigInteger.One;
     public bool CropTo(Rectangle rectangle)
     {
         rectangle.Intersect(Crop);

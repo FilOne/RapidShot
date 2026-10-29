@@ -29,6 +29,10 @@ internal static class PinMarker
         item.Start = new(center.X - dimensions.Width / 2, center.Y - dimensions.Height / 2);
         item.End = new(item.Start.X + dimensions.Width, item.Start.Y + dimensions.Height);
     }
+    public static void Renumber(Annotation item, BigInteger number)
+    {
+        item.PinNumber = number; Resize(item, item.PinSize);
+    }
     public static GraphicsPath CreatePath(RectangleF b)
     {
         var path = new GraphicsPath();
