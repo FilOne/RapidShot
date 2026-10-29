@@ -14,6 +14,7 @@ if ($Portable -or $Installer) {
 }
 if ($LASTEXITCODE -ne 0) { throw 'Публикация не удалась' }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.md') -Destination (Join-Path $PSScriptRoot 'dist\RapidShot\README.md') -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'LICENSE') -Destination (Join-Path $PSScriptRoot 'dist\RapidShot\LICENSE') -Force
 if ($Installer) {
     if (-not $InnoCompiler) {
         $rapidCompilerCommand = Get-Command ISCC.exe -ErrorAction SilentlyContinue
