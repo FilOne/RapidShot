@@ -12,7 +12,7 @@ internal sealed partial class EditorCanvas : Control
         set
         {
             if (tool == value) return;
-            CommitText(); FinishObjectTransform(); dragging = false; Capture = false; pending = null;
+            CommitText(); FinishObjectTransform(); StopBlurFeedback(); dragging = false; Capture = false; pending = null;
             lastPenStrokeAt = 0;
             tool = value; cropDraft = value == EditorTool.Crop ? Document.Crop : null;
             cropDragEdge = CropEdge.None; CropStateChanged?.Invoke(); Invalidate();
@@ -53,6 +53,7 @@ internal sealed partial class EditorCanvas : Control
     public EditorCanvas(ScreenshotDocument document, Func<Keys>? modifierState = null)
     {
         readModifiers = modifierState ?? (() => ModifierKeys);
+        blurHintTimer.Tick += (_, _) => PublishBlurSize();
         Document = document; DoubleBuffered = true; BackColor = Theme.Background;
         SetStyle(ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
         TabStop = true;
@@ -122,8 +123,13 @@ internal sealed partial class EditorCanvas : Control
         var g = e.Graphics;
         using var shadow = new SolidBrush(Color.FromArgb(12, 14, 20));
         g.FillRectangle(shadow, imageBounds.X + 7, imageBounds.Y + 9, imageBounds.Width, imageBounds.Height);
-        g.InterpolationMode = zoom == 1 ? InterpolationMode.NearestNeighbor : InterpolationMode.HighQualityBicubic;
-        g.DrawImage(preview, imageBounds);
+        if (preview.Width == (int)Math.Round(imageBounds.Width) && preview.Height == (int)Math.Round(imageBounds.Height))
+            g.DrawImageUnscaled(preview, Point.Round(imageBounds.Location));
+        else
+        {
+            g.InterpolationMode = zoom == 1 ? InterpolationMode.NearestNeighbor : InterpolationMode.HighQualityBicubic;
+            g.DrawImage(preview, imageBounds);
+        }
         var state = g.Save();
         g.SetClip(imageBounds);
         g.TranslateTransform(imageBounds.X, imageBounds.Y); g.ScaleTransform(zoom, zoom); g.TranslateTransform(-Document.Crop.X, -Document.Crop.Y);
@@ -178,6 +184,7 @@ internal sealed partial class EditorCanvas : Control
         ClearSelection();
         if (Tool == EditorTool.Eraser) { Erase(p); return; }
         pending = new Annotation { Tool = Tool, Start = p, End = p, Color = Ink, Width = StrokeWidth, Opacity = Opacity, DoubleHeaded = DoubleHeaded, Points = [p] };
+        if (Tool == EditorTool.Blur) StartBlurFeedback();
     }
     private void MeasureText(Annotation item)
     {
@@ -282,9 +289,10 @@ internal sealed partial class EditorCanvas : Control
         base.OnMouseMove(e);
         if (Tool == EditorTool.Crop) { MoveCropDrag(e); return; }
         var handle = IsEditingText ? ObjectHandle.None : HitObjectHandle(e.Location);
-        Cursor = ObjectCursor(transformOriginal != null ? transformHandle : handle);
+        var cursor = ObjectCursor(transformOriginal != null ? transformHandle : handle);
         if (transformOriginal == null && handle == ObjectHandle.None)
-            Cursor = Tool == EditorTool.Select ? (Find(ToImage(e.Location)) != null ? Cursors.SizeAll : Cursors.Default) : Tool == EditorTool.Text ? Cursors.IBeam : Cursors.Cross;
+            cursor = Tool == EditorTool.Select ? (Find(ToImage(e.Location)) != null ? Cursors.SizeAll : Cursors.Default) : Tool == EditorTool.Text ? Cursors.IBeam : Cursors.Cross;
+        if (Cursor != cursor) Cursor = cursor;
         if (!dragging) return;
         var p = ToImage(e.Location);
         pointerPosition = p;
@@ -294,7 +302,6 @@ internal sealed partial class EditorCanvas : Control
         if (pending == null) return;
         pending.End = DrawingEnd(p);
         if (Tool == EditorTool.Pen && (Math.Abs(p.X - last.X) + Math.Abs(p.Y - last.Y) > 0.6f)) { pending.Points.Add(p); last = p; }
-        if (Tool == EditorTool.Blur) HintChanged?.Invoke($"Выделено: {(int)pending.Bounds.Width} × {(int)pending.Bounds.Height} px");
         Invalidate();
     }
     protected override void OnMouseUp(MouseEventArgs e)
@@ -307,6 +314,7 @@ internal sealed partial class EditorCanvas : Control
         if (transformOriginal != null) { MoveObjectTransform(pointerPosition, constraintChanged); FinishObjectTransform(); return; }
         // Include the release point, even if Windows coalesced the final move event.
         if (pending != null) { pending.End = DrawingEnd(pointerPosition); if (Tool == EditorTool.Pen) pending.Points.Add(pending.End); }
+        StopBlurFeedback(publish: true);
         dragging = false; Capture = false;
         var item = pending; pending = null;
         if (item != null)
@@ -334,6 +342,7 @@ internal sealed partial class EditorCanvas : Control
         lastPenStrokeAt = 0;
         CancelText();
         FinishObjectTransform();
+        StopBlurFeedback();
         CancelCrop();
         pending = null; dragging = false; Capture = false;
         if (clearSelection) ClearSelection(); Invalidate();
@@ -341,11 +350,11 @@ internal sealed partial class EditorCanvas : Control
     protected override void OnMouseCaptureChanged(EventArgs e)
     {
         base.OnMouseCaptureChanged(e);
-        if (!Capture && dragging) { FinishObjectTransform(); dragging = false; cropDragEdge = CropEdge.None; pending = null; Invalidate(); }
+        if (!Capture && dragging) { FinishObjectTransform(); StopBlurFeedback(); dragging = false; cropDragEdge = CropEdge.None; pending = null; Invalidate(); }
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { CloseTextEditor(); Document.Changed -= Rebuild; preview?.Dispose(); ClearTransformPreview(); }
+        if (disposing) { blurHintTimer.Dispose(); CloseTextEditor(); Document.Changed -= Rebuild; preview?.Dispose(); ClearTransformPreview(); }
         base.Dispose(disposing);
     }
 }

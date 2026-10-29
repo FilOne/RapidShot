@@ -17,6 +17,7 @@ internal static class Program
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        if (args.Contains("--blur-performance")) { BlurCreationTests.Run(Check); return; }
         if (args.Contains("--capture")) { CaptureTargetTests.RunNative(Check); return; }
         if (args.Contains("--render"))
         {
@@ -161,6 +162,7 @@ internal static class Program
         PinTests.Run(Check, output);
         PinNumberTests.Run(Check, output);
         CaptureTargetTests.Run(Check, output);
+        BlurCreationTests.Run(Check);
         Console.WriteLine($"Проверок интерфейса пройдено: {checks}");
         Console.WriteLine("UI preview: " + output);
     }
