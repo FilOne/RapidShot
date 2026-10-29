@@ -74,7 +74,7 @@ internal sealed partial class EditorForm
     {
         document.SetCaptureRegion(regionSelection);
         canvas.UseDesktopCoordinates(); regionEditing = true; Cursor = Cursors.Default;
-        canvas.Visible = true; toolBar.Visible = parameterBar.Visible = status.Visible = true;
+        canvas.Visible = true; toolBar.Visible = status.Visible = true; parameterBar.Visible = hasToolParameters;
         canvas.BringToFront(); toolBar.BringToFront(); parameterBar.BringToFront(); status.BringToFront();
         PositionRegionBars(); canvas.Focus(); Invalidate();
     }
@@ -116,19 +116,16 @@ internal sealed partial class EditorForm
                 var preferred = bar.GetPreferredSize(new Size(maxWidth, 0));
                 if (bar.Size != preferred) bar.Size = preferred;
             }
-            var rows = RegionPanelPlacement.Place(selection, screen, [toolBar.Size, parameterBar.Size, new Size(Math.Min(maxWidth, Math.Max(toolBar.Width, parameterBar.Width)), 22)]);
-            toolBar.Location = rows[0].Location; parameterBar.Location = rows[1].Location; status.Bounds = rows[2];
+            var width = hasToolParameters ? Math.Max(toolBar.Width, parameterBar.Width) : toolBar.Width;
+            List<Size> sizes = [toolBar.Size];
+            if (hasToolParameters) sizes.Add(parameterBar.Size);
+            sizes.Add(new Size(Math.Min(maxWidth, width), 22));
+            var rows = RegionPanelPlacement.Place(selection, screen, sizes.ToArray());
+            toolBar.Location = rows[0].Location;
+            if (hasToolParameters) parameterBar.Location = rows[1].Location;
+            status.Bounds = rows[^1];
         }
         finally { positioningRegionBars = false; }
-    }
-    private void RequestCapture(bool region, string? device)
-    {
-        if (isRegionCapture)
-        {
-            Close();
-            if (Visible) return; // A cancelled save/close keeps the current capture.
-        }
-        CaptureRequested?.Invoke(region, device);
     }
 }
 

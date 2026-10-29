@@ -70,7 +70,6 @@ internal sealed class TrayApplication : ApplicationContext
         var visible = editors.Where(x => !x.IsDisposed && x.Visible).ToArray();
         foreach (var editor in visible) editor.Hide();
         Bitmap? image = null;
-        (bool Region, string? Device)? nextCapture = null;
         try
         {
             await Task.Delay(180);
@@ -80,7 +79,6 @@ internal sealed class TrayApplication : ApplicationContext
             {
                 using var overlay = new EditorForm(image, settings, bounds);
                 image = null; // The same capture form now owns the snapshot and the editor.
-                overlay.CaptureRequested += (nextRegion, device) => nextCapture = (nextRegion, device);
                 overlay.ShowDialog();
             }
         }
@@ -91,14 +89,12 @@ internal sealed class TrayApplication : ApplicationContext
             capturing = false;
         }
         if (image != null) ShowEditor(image);
-        if (nextCapture is { } next) await Capture(next.Region, next.Device);
     }
     private void ShowEditor(Bitmap image)
     {
         try
         {
             var editor = new EditorForm(image, settings);
-            editor.CaptureRequested += async (region, device) => await Capture(region, device);
             editors.Add(editor); editor.FormClosed += (_, _) => editors.Remove(editor);
             editor.Show(); editor.Activate();
         }

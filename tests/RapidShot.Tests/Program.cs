@@ -118,9 +118,9 @@ internal static class Program
         using (var form = new EditorForm(TrayApplication.CreateDemo(), new AppSettings()))
         {
             Check(form.Controls.Count > 0, "Редактор создаёт дерево элементов управления");
-            IEnumerable<Control> All(Control c) => c.Controls.Cast<Control>().SelectMany(child => new[] { child }.Concat(All(child)));
-            var uploads = All(form).OfType<Button>().Where(x => x.AccessibleName?.StartsWith("Загрузить на ") == true).ToArray();
-            Check(uploads.Length == 1 && uploads[0].AccessibleName == "Загрузить на Yapx", "В редакторе только одна кнопка загрузки — Yapx");
+            var menu = (ContextMenuStrip)typeof(EditorForm).GetField("captureMenu", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(form)!;
+            var uploads = menu.Items.Cast<ToolStripItem>().Where(x => x.AccessibleName?.StartsWith("Загрузить на ") == true).ToArray();
+            Check(uploads.Length == 1 && uploads[0].AccessibleName == "Загрузить на Yapx", "Меню захвата содержит только один сервис загрузки — Yapx");
             RenderContent(form, "editor-preview.png");
         }
         using (var small = new EditorForm(TrayApplication.CreateDemo(), new AppSettings()) { ClientSize = new(740, 460) })
@@ -174,6 +174,7 @@ internal static class Program
         MinimalInterfaceTests.Run(Check);
         RegionCaptureTests.Run(Check, output);
         ButtonRenderingTests.Run(Check, output);
+        CaptureActionTests.Run(Check, output);
         Console.WriteLine($"Проверок интерфейса пройдено: {checks}");
         Console.WriteLine("UI preview: " + output);
     }

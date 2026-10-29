@@ -17,8 +17,9 @@ internal static class MinimalInterfaceTests
             check(bar.Width < content.Width - 20 && Math.Abs(bar.Left + bar.Width / 2 - content.Width / 2) < 3 && bar.Bottom <= parameters.Top,
                 "Компактные панели центрированы под снимком и не занимают всю ширину окна");
             check(bar.Controls.OfType<IconButton>().Where(x => x.Visible).All(x => x.Right <= bar.ClientSize.Width - bar.Padding.Right), "Иконки действий и инструментов помещаются в компактном окне");
-            check(Field<IconButton>("google").Parent == bar && Field<IconButton>("google").AccessibleName == "Поиск в Google" && Field<Button>("upload").Parent == bar,
-                "Поиск Google Lens и загрузка Yapx доступны отдельными кнопками");
+            var menu = Field<ContextMenuStrip>("captureMenu"); var capture = Field<CaptureSplitButton>("capture");
+            check(Field<IconButton>("google").Parent == bar && capture.Parent == bar && menu.Items.Contains(Field<ToolStripMenuItem>("upload")) && menu.Items.Contains(Field<ToolStripMenuItem>("save")),
+                "Захват объединяет копирование, сохранение и Yapx, поиск Google остаётся в панели");
             check(canvas.Height > size.Height * .7 && form.WindowState == FormWindowState.Normal, "Снимок занимает основную часть обычного окна редактора");
             typeof(EditorForm).GetMethod("SelectTool", Private)!.Invoke(form, [EditorTool.Arrow]);
             var tools = Field<Dictionary<EditorTool, ToolGroupButton>>("tools");

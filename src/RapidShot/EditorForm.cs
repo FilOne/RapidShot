@@ -10,11 +10,12 @@ internal sealed partial class EditorForm : Form
     private readonly EditorCanvas canvas;
     private readonly AppSettings settings;
     private readonly Label status, activeItem;
-    private readonly Button undo, redo, save, copy, upload, delete, customColor;
-    private readonly IconButton capture, google;
+    private readonly Button undo, redo, copy, delete, customColor;
+    private readonly ToolStripMenuItem save, upload;
+    private readonly CaptureSplitButton capture;
+    private readonly IconButton google;
     private readonly FloatingBar toolBar;
     private readonly ContextMenuStrip captureMenu = new(), colorMenu = new();
-    public event Action<bool, string?>? CaptureRequested;
     private readonly Dictionary<EditorTool, ToolGroupButton> tools = [];
     private readonly Dictionary<EditorTool, string> toolNames = [];
     private readonly NumericUpDown fontSize, pinSize;
@@ -30,7 +31,7 @@ internal sealed partial class EditorForm : Form
     private readonly Button applyCrop, resetCrop;
     private readonly TableLayoutPanel workspace;
     private readonly ToolTip tips = new();
-    private bool sliderUndoRecorded, exported, updatingStyle;
+    private bool sliderUndoRecorded, exported, updatingStyle, hasToolParameters;
     private CancellationTokenSource? uploading;
 
     public EditorForm(Bitmap image, AppSettings settings, Rectangle? regionBounds = null)
@@ -42,18 +43,19 @@ internal sealed partial class EditorForm : Form
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 4, ColumnCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
         root.RowStyles.Add(new(SizeType.Percent, 100)); root.RowStyles.Add(new(SizeType.Absolute, 52)); root.RowStyles.Add(new(SizeType.Absolute, 56)); root.RowStyles.Add(new(SizeType.Absolute, 20));
         root.ColumnStyles.Add(new(SizeType.Percent, 100));
-        save = new IconButton(UiIcon.Save, "Сохранить"); save.Click += (_, _) => SaveAndFinish(); tips.SetToolTip(save, "Сохранить PNG или JPEG · Ctrl+S");
-        copy = new IconButton(UiIcon.Copy, "В буфер"); copy.Click += (_, _) => CopyImage(); tips.SetToolTip(copy, "Скопировать изображение · Ctrl+C");
-        upload = new IconButton(UiIcon.Upload, "Загрузить на Yapx"); upload.Click += async (_, _) => await Upload();
-        upload.AccessibleName = "Загрузить на Yapx"; tips.SetToolTip(upload, "Загрузить снимок на Yapx и получить ссылку");
+        save = new ToolStripMenuItem("Сохранить…") { ShortcutKeyDisplayString = "Ctrl+S" }; save.Click += (_, _) => SaveAndFinish();
+        upload = new ToolStripMenuItem("Загрузить на Yapx") { AccessibleName = "Загрузить на Yapx" }; upload.Click += async (_, _) => await Upload();
+        captureMenu.Items.AddRange([save, upload]);
         google = new IconButton(UiIcon.Search, "Поиск в Google"); google.Click += async (_, _) => await SearchGoogle(); tips.SetToolTip(google, "Поиск по снимку · Google Lens");
         workspace = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 1, Margin = Padding.Empty };
         workspace.ColumnStyles.Add(new(SizeType.Percent, 100));
         canvas = new(document) { Dock = DockStyle.Fill, Margin = Padding.Empty }; workspace.Controls.Add(canvas); root.Controls.Add(workspace);
         toolBar = new FloatingBar { AccessibleName = "Инструменты" };
-        capture = new IconButton(UiIcon.Camera, "Снимок  ⌄") { ShowText = true, Width = 112, BackColor = Theme.Accent, ForeColor = Theme.Background };
-        capture.Click += (_, _) => ShowCaptureMenu(); tips.SetToolTip(capture, "Новый снимок области или выбранного экрана");
-        toolBar.Controls.AddRange([capture, save, copy, upload, google, Separator()]);
+        capture = new CaptureSplitButton(); copy = capture.PrimaryAction;
+        capture.CopyRequested += CopyImage; capture.MenuRequested += ShowCaptureMenu;
+        tips.SetToolTip(copy, "Захват — скопировать изображение в буфер · Ctrl+C");
+        tips.SetToolTip(capture.MenuAction, "Сохранить снимок или загрузить на Yapx");
+        toolBar.Controls.AddRange([capture, google, Separator()]);
         ToolDefinition[][] groups = [
             [new(EditorTool.Select, "↖", "Выбор / перенос", "V")],
             [new(EditorTool.Pen, "✎", "Карандаш", "P"), new(EditorTool.Line, "╱", "Линия", "L"), new(EditorTool.Arrow, "↗", "Стрелка", "A")],
@@ -133,7 +135,7 @@ internal sealed partial class EditorForm : Form
         cropControls.Controls.Add(new Label { Text = "Потяните край или угол снимка", Width = 220, Height = 32, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Theme.Muted, Margin = new Padding(4, 2, 4, 2) });
         applyCrop = Theme.Button("Обрезать ↵", (_, _) => canvas.CommitCrop(), true); resetCrop = Theme.Button("Сбросить · Esc", (_, _) => canvas.CancelCrop());
         foreach (var button in new[] { applyCrop, resetCrop }) { button.AutoSize = false; button.Size = new(112, 32); button.Padding = Padding.Empty; button.Margin = new Padding(4, 2, 4, 2); }
-        cropControls.Controls.AddRange([applyCrop, resetCrop]); parameterBar.Controls.Add(cropControls); root.Controls.Add(parameterBar);
+        cropControls.Controls.AddRange([applyCrop, resetCrop]); parameterBar.Controls.Add(cropControls); root.Controls.Add(parameterBar, 0, 2);
         status = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, AutoEllipsis = true, Font = new Font("Segoe UI", 8), Padding = new Padding(10, 0, 4, 0), BackColor = Theme.Background, ForeColor = Theme.Muted };
         root.Controls.Add(status); Controls.Add(root);
         canvas.HintChanged += text => status.Text = text; canvas.SelectionChanged += SyncStyle;
@@ -148,11 +150,7 @@ internal sealed partial class EditorForm : Form
     private static Control Separator() => new Panel { Width = 1, Height = 24, BackColor = Color.FromArgb(74, 78, 85), Margin = new Padding(6, 5, 6, 5) };
     private void ShowCaptureMenu()
     {
-        foreach (var item in captureMenu.Items.Cast<ToolStripItem>().ToArray()) item.Dispose(); captureMenu.Items.Clear();
-        captureMenu.Items.Add("Снимок области", null, (_, _) => RequestCapture(true, null));
-        captureMenu.Items.Add("Все экраны целиком", null, (_, _) => RequestCapture(false, null));
-        captureMenu.Items.AddRange(CaptureTargets.MenuItems(CaptureTargets.GetDisplays(), device => RequestCapture(false, device)));
-        captureMenu.Show(capture, Point.Empty, ToolStripDropDownDirection.AboveRight);
+        captureMenu.Show(capture.MenuAction, Point.Empty, ToolStripDropDownDirection.AboveRight);
     }
     private static Panel ParameterBox(string title, Control input, int width, out Label label)
     {
@@ -237,6 +235,11 @@ internal sealed partial class EditorForm : Form
         strokeControls.Visible = !cropping && (strokes || context == EditorTool.Blur); transparencyControl.Visible = strokes;
         recognizeShapes.Visible = !cropping && canvas.Tool == EditorTool.Pen;
         pinControls.Visible = !cropping && context == EditorTool.Pin;
+        hasToolParameters = cropping || strokes || context is EditorTool.Blur or EditorTool.Text or EditorTool.Pin || canvas.Tool == EditorTool.Text || canvas.Tool == EditorTool.Pen;
+        parameterBar.Visible = hasToolParameters && (!isRegionCapture || regionEditing);
+        // Keep the normal editor's viewport stable when selection parameters
+        // appear during a drag. The desktop overlay has fixed image coordinates.
+        if (isRegionCapture) PositionRegionBars();
         SyncPinNumber();
         nextPin.Text = $"Следующий: {document.NextPinNumber}";
         tips.SetToolTip(nextPin, nextPin.Text);
@@ -304,7 +307,7 @@ internal sealed partial class EditorForm : Form
         CommitPinNumber(); canvas.CommitEdits();
         using var cancellation = new CancellationTokenSource(); uploading = cancellation;
         var completed = false;
-        canvas.Enabled = false; save.Enabled = copy.Enabled = upload.Enabled = capture.Enabled = false;
+        canvas.SetInputEnabled(false); save.Enabled = copy.Enabled = upload.Enabled = capture.Enabled = false;
         foreach (var button in tools.Values.Distinct()) button.Enabled = false;
         parameterBar.Enabled = false; undo.Enabled = redo.Enabled = delete.Enabled = false;
         google.Symbol = UiIcon.Cancel; google.Invalidate(); status.Text = "Поиск по снимку в Google Lens…";
@@ -324,7 +327,7 @@ internal sealed partial class EditorForm : Form
             uploading = null;
             if (!IsDisposed)
             {
-                canvas.Enabled = true; save.Enabled = copy.Enabled = upload.Enabled = capture.Enabled = true;
+                canvas.SetInputEnabled(true); save.Enabled = copy.Enabled = upload.Enabled = capture.Enabled = true;
                 foreach (var button in tools.Values.Distinct()) button.Enabled = true;
                 parameterBar.Enabled = true; google.Symbol = UiIcon.Search; google.Invalidate(); UpdatePropertyVisibility(); UpdateHistory();
             }
@@ -338,10 +341,10 @@ internal sealed partial class EditorForm : Form
         using var cancellation = new CancellationTokenSource(); uploading = cancellation;
         var completed = false;
         workspace.Enabled = false;
-        canvas.Enabled = false; save.Enabled = copy.Enabled = false;
+        canvas.SetInputEnabled(false); save.Enabled = copy.Enabled = false;
         foreach (var button in tools.Values.Distinct()) button.Enabled = false;
         parameterBar.Enabled = false; delete.Enabled = false; undo.Enabled = redo.Enabled = false;
-        google.Enabled = capture.Enabled = false; ((IconButton)upload).Symbol = UiIcon.Cancel; upload.Invalidate(); status.Text = "Загрузка изображения на Yapx…";
+        google.Enabled = false; upload.Text = "Отменить загрузку на Yapx"; status.Text = "Загрузка изображения на Yapx…";
         try
         {
             using var image = document.Render();
@@ -363,8 +366,8 @@ internal sealed partial class EditorForm : Form
             uploading = null;
             if (!IsDisposed)
             {
-                canvas.Enabled = true; save.Enabled = copy.Enabled = true;
-                ((IconButton)upload).Symbol = UiIcon.Upload; upload.Invalidate(); google.Enabled = capture.Enabled = true;
+                canvas.SetInputEnabled(true); save.Enabled = copy.Enabled = true;
+                upload.Text = "Загрузить на Yapx"; google.Enabled = capture.Enabled = true;
                 workspace.Enabled = true;
                 foreach (var button in tools.Values.Distinct()) button.Enabled = true;
                 parameterBar.Enabled = true; UpdatePropertyVisibility(); UpdateHistory();

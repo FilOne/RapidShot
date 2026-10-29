@@ -49,6 +49,12 @@ internal sealed partial class EditorCanvas : Control
     private Annotation? textOriginal, textDraft;
     private Font? textEditorFont;
     public bool IsEditingText => textEditor != null;
+    private bool acceptsInput = true;
+    internal void SetInputEnabled(bool enabled)
+    {
+        acceptsInput = enabled;
+        if (!enabled) { CancelGesture(false); Cursor = Cursors.Default; }
+    }
 
     public EditorCanvas(ScreenshotDocument document, Func<Keys>? modifierState = null)
     {
@@ -161,7 +167,9 @@ internal sealed partial class EditorCanvas : Control
     private Annotation? Find(PointF point) => Document.Items.LastOrDefault(x => x.HitTest(point, 5 / zoom));
     protected override void OnMouseDown(MouseEventArgs e)
     {
-        base.OnMouseDown(e); Focus();
+        base.OnMouseDown(e);
+        if (!acceptsInput) return;
+        Focus();
         if (e.Button != MouseButtons.Left) return;
         shiftConstraint = (readModifiers() & Keys.Shift) != 0;
         if (Tool == EditorTool.Crop) { StartCropDrag(e); return; }
@@ -296,6 +304,7 @@ internal sealed partial class EditorCanvas : Control
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
+        if (!acceptsInput) return;
         if (Tool == EditorTool.Crop) { MoveCropDrag(e); return; }
         var handle = IsEditingText ? ObjectHandle.None : HitObjectHandle(e.Location);
         var cursor = ObjectCursor(transformOriginal != null ? transformHandle : handle);
@@ -316,6 +325,7 @@ internal sealed partial class EditorCanvas : Control
     protected override void OnMouseUp(MouseEventArgs e)
     {
         base.OnMouseUp(e);
+        if (!acceptsInput) return;
         if (Tool == EditorTool.Crop) { EndCropDrag(e); return; }
         if (!dragging || e.Button != MouseButtons.Left) return;
         pointerPosition = ToImage(e.Location);
