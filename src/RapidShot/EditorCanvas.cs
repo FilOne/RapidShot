@@ -50,8 +50,9 @@ internal sealed partial class EditorCanvas : Control
     private Font? textEditorFont;
     public bool IsEditingText => textEditor != null;
 
-    public EditorCanvas(ScreenshotDocument document)
+    public EditorCanvas(ScreenshotDocument document, Func<Keys>? modifierState = null)
     {
+        readModifiers = modifierState ?? (() => ModifierKeys);
         Document = document; DoubleBuffered = true; BackColor = Theme.Background;
         SetStyle(ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
         TabStop = true;
@@ -147,10 +148,11 @@ internal sealed partial class EditorCanvas : Control
     {
         base.OnMouseDown(e); Focus();
         if (e.Button != MouseButtons.Left) return;
+        shiftConstraint = (readModifiers() & Keys.Shift) != 0;
         if (Tool == EditorTool.Crop) { StartCropDrag(e); return; }
         if (!IsEditingText && StartHandleDrag(e)) return;
         if (!imageBounds.Contains(e.Location)) return;
-        var p = ToImage(e.Location); anchor = last = p;
+        var p = ToImage(e.Location); anchor = last = pointerPosition = p;
         if (Tool == EditorTool.Pin)
         {
             Selected = Document.AddPin(p, Ink, PinSize); SelectionChanged?.Invoke(); Invalidate();
@@ -285,10 +287,12 @@ internal sealed partial class EditorCanvas : Control
             Cursor = Tool == EditorTool.Select ? (Find(ToImage(e.Location)) != null ? Cursors.SizeAll : Cursors.Default) : Tool == EditorTool.Text ? Cursors.IBeam : Cursors.Cross;
         if (!dragging) return;
         var p = ToImage(e.Location);
-        if (transformOriginal != null) { MoveObjectTransform(p); return; }
+        pointerPosition = p;
+        var constraintChanged = ReadShiftConstraint();
+        if (transformOriginal != null) { MoveObjectTransform(p, constraintChanged); return; }
         if (Tool == EditorTool.Eraser) { Erase(p); return; }
         if (pending == null) return;
-        pending.End = p;
+        pending.End = DrawingEnd(p);
         if (Tool == EditorTool.Pen && (Math.Abs(p.X - last.X) + Math.Abs(p.Y - last.Y) > 0.6f)) { pending.Points.Add(p); last = p; }
         if (Tool == EditorTool.Blur) HintChanged?.Invoke($"Выделено: {(int)pending.Bounds.Width} × {(int)pending.Bounds.Height} px");
         Invalidate();
@@ -298,9 +302,11 @@ internal sealed partial class EditorCanvas : Control
         base.OnMouseUp(e);
         if (Tool == EditorTool.Crop) { EndCropDrag(e); return; }
         if (!dragging || e.Button != MouseButtons.Left) return;
-        if (transformOriginal != null) { MoveObjectTransform(ToImage(e.Location)); FinishObjectTransform(); return; }
+        pointerPosition = ToImage(e.Location);
+        var constraintChanged = ReadShiftConstraint();
+        if (transformOriginal != null) { MoveObjectTransform(pointerPosition, constraintChanged); FinishObjectTransform(); return; }
         // Include the release point, even if Windows coalesced the final move event.
-        if (pending != null) { pending.End = ToImage(e.Location); if (Tool == EditorTool.Pen) pending.Points.Add(pending.End); }
+        if (pending != null) { pending.End = DrawingEnd(pointerPosition); if (Tool == EditorTool.Pen) pending.Points.Add(pending.End); }
         dragging = false; Capture = false;
         var item = pending; pending = null;
         if (item != null)

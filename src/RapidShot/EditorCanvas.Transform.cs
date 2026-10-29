@@ -76,14 +76,15 @@ internal sealed partial class EditorCanvas
         lastPenStrokeAt = 0;
         transformOriginal = Selected.Clone(); transformHandle = handle; transformChanged = false;
         ClearTransformPreview(); anchor = point; last = point; dragging = true; Capture = true;
+        pointerPosition = point;
         Cursor = ObjectCursor(handle);
-        HintChanged?.Invoke(handle == ObjectHandle.Move ? "Перемещение объекта · Ctrl+Z — отменить." : "Потяните маркер, чтобы изменить размер · Ctrl+Z — отменить.");
+        HintChanged?.Invoke(handle == ObjectHandle.Move ? "Перемещение объекта · Ctrl+Z — отменить." : "Потяните маркер · Shift — равномерный размер · Ctrl+Z — отменить.");
+        if (shiftConstraint && handle != ObjectHandle.Move) MoveObjectTransform(point, true);
     }
-    private void MoveObjectTransform(PointF point)
+    private void MoveObjectTransform(PointF point, bool force = false)
     {
-        if (transformOriginal == null || Selected == null || point == last) return;
-        var original = transformOriginal; var item = Selected;
-        if (!transformChanged) { Document.BeginChange(); transformChanged = true; }
+        if (transformOriginal == null || Selected == null || (!force && point == last)) return;
+        var original = transformOriginal; var item = original.Clone();
         var dx = point.X - anchor.X; var dy = point.Y - anchor.Y;
         if (transformHandle == ObjectHandle.Move)
         {
@@ -104,13 +105,22 @@ internal sealed partial class EditorCanvas
             var r = right ? Math.Max(b.Right + dx, b.Left + 2) : b.Right;
             var t = top ? Math.Min(b.Top + dy, b.Bottom - 2) : b.Top;
             var d = bottom ? Math.Max(b.Bottom + dy, b.Top + 2) : b.Bottom;
+            var target = RectangleF.FromLTRB(l, t, r, d);
+            if (shiftConstraint) target = ConstrainResize(b, target, left, right, top, bottom, item.Tool is EditorTool.Rectangle or EditorTool.Ellipse);
+            l = target.Left; r = target.Right; t = target.Top; d = target.Bottom;
             PointF Map(PointF p) => new(b.Width > .001f ? l + (p.X - b.X) * (r - l) / b.Width : (l + r) / 2,
                 b.Height > .001f ? t + (p.Y - b.Y) * (d - t) / b.Height : (t + d) / 2);
-            if (item.Tool == EditorTool.Ellipse && original.EllipseAngle != 0) EllipseGeometry.Resize(item, original, RectangleF.FromLTRB(l, t, r, d));
+            if (shiftConstraint && item.Tool == EditorTool.Ellipse) { item.EllipseAngle = 0; item.Start = target.Location; item.End = new(target.Right, target.Bottom); }
+            else if (item.Tool == EditorTool.Ellipse && original.EllipseAngle != 0) EllipseGeometry.Resize(item, original, target);
             else { item.Start = Map(original.Start); item.End = Map(original.End); }
             if (item.Tool == EditorTool.Pen) item.Points = original.Points.Select(Map).ToList();
         }
-        last = point; Document.NotifyChanged();
+        last = point;
+        if (Selected.Start == item.Start && Selected.End == item.End && Selected.EllipseAngle == item.EllipseAngle && Selected.FontSize == item.FontSize && Selected.PinSize == item.PinSize && Selected.Points.SequenceEqual(item.Points)) return;
+        if (!transformChanged) { Document.BeginChange(); transformChanged = true; }
+        Selected.Start = item.Start; Selected.End = item.End; Selected.Points = item.Points;
+        Selected.EllipseAngle = item.EllipseAngle; Selected.FontSize = item.FontSize; Selected.PinSize = item.PinSize;
+        Document.NotifyChanged();
     }
     private void ResizeText(Annotation item, Annotation original, float dx, float dy)
     {

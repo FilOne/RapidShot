@@ -154,6 +154,7 @@ internal static class Program
         StyleControlsTests.Run(Check, output);
         LiveAnnotationTests.Run(Check, output);
         TransformTests.Run(Check, output);
+        ShiftConstraintTests.Run(Check, output);
         FreehandTests.Run(Check, output);
         ArrowRecognitionTests.Run(Check, output);
         EllipseRecognitionTests.Run(Check, output);
