@@ -52,10 +52,11 @@ internal static class MagnifierGeometry
         PointF[] corners = [target.Location, new(target.Right, target.Top), new(target.Left, target.Bottom)];
         g.DrawImage(patch, corners, new RectangleF(PointF.Empty, patch.Size), GraphicsUnit.Pixel, attributes);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        // Draw the outline inside the patch, including when it touches the screenshot edge.
-        var width = Math.Min(Math.Max(1, item.Width * outlineScale), Math.Min(target.Width, target.Height));
+        // Keep the entire stroke outside the patch, so increasing its width never covers image pixels.
+        var width = Math.Max(1, item.Width * outlineScale);
         using var border = new Pen(item.Color, width);
-        g.DrawRectangle(border, target.X + width / 2, target.Y + width / 2, Math.Max(.01f, target.Width - width), Math.Max(.01f, target.Height - width));
+        g.SetClip(target, CombineMode.Exclude);
+        g.DrawRectangle(border, target.X - width / 2, target.Y - width / 2, target.Width + width, target.Height + width);
         g.Restore(state);
     }
     internal static void Draw(Bitmap result, Annotation item, RectangleF crop, Bitmap? sourceOverride = null)

@@ -44,7 +44,8 @@ public sealed class Annotation
         get
         {
             var result = GeometryBounds;
-            result.Inflate(Width / 2 + 3, Width / 2 + 3);
+            var margin = (Tool == EditorTool.Magnifier ? Width : Width / 2) + 3;
+            result.Inflate(margin, margin);
             return result;
         }
     }
@@ -238,7 +239,7 @@ public sealed class ScreenshotDocument : IDisposable
             }
             else if (item.Tool == EditorTool.Magnifier)
             {
-                if (!area.IntersectsWith(item.Bounds)) continue;
+                if (!area.IntersectsWith(item.SelectionBounds)) continue;
                 Bitmap? source = null;
                 if (!area.Contains(item.SourceBounds))
                 {
