@@ -12,7 +12,7 @@ internal sealed partial class EditorCanvas : Control
         set
         {
             if (tool == value || desktopCoordinates && value == EditorTool.Crop) return;
-            CommitText(); FinishObjectTransform(); StopBlurFeedback(); CancelCaptureResize(); dragging = false; Capture = false; pending = null;
+            CommitText(); FinishObjectTransform(); StopBlurFeedback(); CancelCaptureResize(); CancelMagnifier(); editMagnifierSource = false; dragging = false; Capture = false; pending = null;
             lastPenStrokeAt = 0;
             tool = value; cropDraft = value == EditorTool.Crop ? Document.Crop : null;
             cropDragEdge = CropEdge.None; CropStateChanged?.Invoke(); Invalidate();
@@ -96,6 +96,8 @@ internal sealed partial class EditorCanvas : Control
     }
     public void UpdateSelectedStyle(bool recordUndo = true)
     {
+        if (pending?.Tool == EditorTool.Magnifier)
+        { pending.Color = Ink; pending.Width = StrokeWidth; Invalidate(); }
         if (textDraft != null)
         {
             textDraft.Color = Ink; textDraft.Width = StrokeWidth; textDraft.FontSize = TextSize;
@@ -154,7 +156,8 @@ internal sealed partial class EditorCanvas : Control
         g.SmoothingMode = SmoothingMode.AntiAlias;
         if (pending != null)
         {
-            if (pending.Tool == EditorTool.Blur)
+            if (pending.Tool == EditorTool.Magnifier) DrawMagnifierDraft(g);
+            else if (pending.Tool == EditorTool.Blur)
             {
                 using var fill = new SolidBrush(Color.FromArgb(50, Theme.Accent)); g.FillRectangle(fill, pending.Bounds);
                 using var border = new Pen(Theme.Accent, 1.5f / zoom) { DashStyle = DashStyle.Dash }; g.DrawRectangle(border, pending.Bounds.X, pending.Bounds.Y, pending.Bounds.Width, pending.Bounds.Height);
@@ -180,11 +183,16 @@ internal sealed partial class EditorCanvas : Control
         Focus();
         if (e.Button != MouseButtons.Left) return;
         shiftConstraint = (readModifiers() & Keys.Shift) != 0;
+        if (magnifierStage == MagnifierStage.Placement) { if (imageBounds.Contains(e.Location)) StartMagnifier(ToImage(e.Location)); return; }
         if (StartCaptureResize(e)) return;
         if (Tool == EditorTool.Crop) { StartCropDrag(e); return; }
         if (!IsEditingText && StartHandleDrag(e)) return;
         if (!imageBounds.Contains(e.Location)) return;
         var p = ToImage(e.Location); anchor = last = pointerPosition = p;
+        if (EditingMagnifierSource && Selected!.SourceBounds.Contains(p)) { StartObjectTransform(ObjectHandle.Move, p); return; }
+        if (Selected is { } selected && selected.Tool == Tool && Tool is EditorTool.Arrow or EditorTool.Magnifier && selected.HitTest(p, 5 / zoom))
+        { StartObjectTransform(ObjectHandle.Move, p); return; }
+        if (Tool == EditorTool.Magnifier) { StartMagnifier(p); return; }
         if (Tool == EditorTool.Pin)
         {
             Selected = Document.AddPin(p, Ink, PinSize); SelectionChanged?.Invoke(); Invalidate();
@@ -323,7 +331,12 @@ internal sealed partial class EditorCanvas : Control
         if (desktopCoordinates && Tool != EditorTool.Crop && !dragging && HitCropEdge(e.Location) is var edge && edge != CropEdge.None)
         { var edgeCursor = CropCursor(edge); if (Cursor != edgeCursor) Cursor = edgeCursor; return; }
         if (Tool == EditorTool.Crop) { MoveCropDrag(e); return; }
+        if (magnifierStage == MagnifierStage.Placement)
+        {
+            if (imageBounds.Contains(e.Location)) PositionMagnifier(ToImage(e.Location)); return;
+        }
         var handle = IsEditingText ? ObjectHandle.None : HitObjectHandle(e.Location);
+        if (handle == ObjectHandle.None && !IsEditingText && HitCurveHandle(e.Location) != null) handle = ObjectHandle.Curve;
         var cursor = ObjectCursor(transformOriginal != null ? transformHandle : handle);
         if (transformOriginal == null && handle == ObjectHandle.None)
             cursor = Tool == EditorTool.Select ? (Find(ToImage(e.Location)) != null ? Cursors.SizeAll : Cursors.Default) : Tool == EditorTool.Text ? Cursors.IBeam : Cursors.Cross;
@@ -349,6 +362,7 @@ internal sealed partial class EditorCanvas : Control
         pointerPosition = ToImage(e.Location);
         var constraintChanged = ReadShiftConstraint();
         if (transformOriginal != null) { MoveObjectTransform(pointerPosition, constraintChanged); FinishObjectTransform(); return; }
+        if (magnifierStage != MagnifierStage.None) { EndMagnifier(pointerPosition); return; }
         // Include the release point, even if Windows coalesced the final move event.
         if (pending != null) { pending.End = DrawingEnd(pointerPosition); if (Tool == EditorTool.Pen) pending.Points.Add(pending.End); }
         StopBlurFeedback(publish: true);
@@ -382,6 +396,7 @@ internal sealed partial class EditorCanvas : Control
         FinishObjectTransform();
         StopBlurFeedback();
         CancelCrop();
+        CancelMagnifier(); editMagnifierSource = false;
         pending = null; dragging = false; Capture = false;
         if (clearSelection) ClearSelection(); Invalidate();
     }
@@ -389,11 +404,11 @@ internal sealed partial class EditorCanvas : Control
     {
         base.OnMouseCaptureChanged(e);
         if (!Capture) CancelCaptureResize();
-        if (!Capture && dragging) { FinishObjectTransform(); StopBlurFeedback(); dragging = false; cropDragEdge = CropEdge.None; pending = null; Invalidate(); }
+        if (!Capture && dragging) { FinishObjectTransform(); StopBlurFeedback(); CancelMagnifier(); dragging = false; cropDragEdge = CropEdge.None; pending = null; Invalidate(); }
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { blurHintTimer.Dispose(); CloseTextEditor(); Document.Changed -= Rebuild; preview?.Dispose(); desktopBackdrop?.Dispose(); ClearTransformPreview(); }
+        if (disposing) { blurHintTimer.Dispose(); CloseTextEditor(); CancelMagnifier(); Document.Changed -= Rebuild; preview?.Dispose(); desktopBackdrop?.Dispose(); ClearTransformPreview(); }
         base.Dispose(disposing);
     }
 }

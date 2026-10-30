@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.21.0"
+  #define AppVersion "1.22.0"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\dist\RapidShot"

@@ -6,7 +6,7 @@ using System.Numerics;
 
 namespace RapidShot;
 
-public enum EditorTool { Select, Pen, Rectangle, Ellipse, Arrow, Line, Text, Blur, Eraser, Crop, Pin }
+public enum EditorTool { Select, Pen, Rectangle, Ellipse, Arrow, Line, Text, Blur, Eraser, Crop, Pin, Magnifier }
 
 public sealed class Annotation
 {
@@ -24,16 +24,20 @@ public sealed class Annotation
     public PointF Start { get; set; }
     public PointF End { get; set; }
     public List<PointF> Points { get; set; } = [];
+    public List<PointF> CurvePoints { get; set; } = [];
+    public RectangleF SourceBounds { get; set; }
+    public float Magnification { get; set; } = 2;
     public RectangleF Bounds => RectangleF.FromLTRB(Math.Min(Start.X, End.X), Math.Min(Start.Y, End.Y), Math.Max(Start.X, End.X), Math.Max(Start.Y, End.Y));
     public RectangleF GeometryBounds => Tool == EditorTool.Pen && Points.Count > 0
-        ? RectangleF.FromLTRB(Points.Min(p => p.X), Points.Min(p => p.Y), Points.Max(p => p.X), Points.Max(p => p.Y)) : Tool == EditorTool.Ellipse && EllipseAngle != 0 ? EllipseGeometry.Bounds(this) : Bounds;
-    public Annotation Clone() => new() { Id = Id, Tool = Tool, Color = Color, Width = Width, FontSize = FontSize, EllipseAngle = EllipseAngle, Opacity = Opacity, Text = Text, DoubleHeaded = DoubleHeaded, PinNumber = PinNumber, PinSize = PinSize, Start = Start, End = End, Points = [.. Points] };
+        ? RectangleF.FromLTRB(Points.Min(p => p.X), Points.Min(p => p.Y), Points.Max(p => p.X), Points.Max(p => p.Y)) : Tool == EditorTool.Arrow ? ArrowGeometry.Bounds(this) : Tool == EditorTool.Ellipse && EllipseAngle != 0 ? EllipseGeometry.Bounds(this) : Bounds;
+    public Annotation Clone() => new() { Id = Id, Tool = Tool, Color = Color, Width = Width, FontSize = FontSize, EllipseAngle = EllipseAngle, Opacity = Opacity, Text = Text, DoubleHeaded = DoubleHeaded, PinNumber = PinNumber, PinSize = PinSize, Start = Start, End = End, Points = [.. Points], CurvePoints = [.. CurvePoints], SourceBounds = SourceBounds, Magnification = Magnification };
     public static bool IsStrokeTool(EditorTool tool) => tool is EditorTool.Pen or EditorTool.Line or EditorTool.Arrow or EditorTool.Rectangle or EditorTool.Ellipse;
     public void Offset(float dx, float dy)
     {
         Start = new(Start.X + dx, Start.Y + dy);
         End = new(End.X + dx, End.Y + dy);
         for (var i = 0; i < Points.Count; i++) Points[i] = new(Points[i].X + dx, Points[i].Y + dy);
+        for (var i = 0; i < CurvePoints.Count; i++) CurvePoints[i] = new(CurvePoints[i].X + dx, CurvePoints[i].Y + dy);
     }
     public RectangleF SelectionBounds
     {
@@ -52,11 +56,17 @@ public sealed class Annotation
             using var outline = new Pen(Color.Black, tolerance * 2);
             return pinPath.IsVisible(point) || pinPath.IsOutlineVisible(point, outline);
         }
-        if (Tool is EditorTool.Blur or EditorTool.Text) return SelectionBounds.Contains(point);
+        if (Tool is EditorTool.Blur or EditorTool.Text or EditorTool.Magnifier) return SelectionBounds.Contains(point);
         if (Tool == EditorTool.Pen)
             return Points.Count == 1 ? Distance(point, Points[0], Points[0]) <= tolerance + Width / 2
                 : Enumerable.Range(1, Points.Count - 1).Any(i => Distance(point, Points[i - 1], Points[i]) <= tolerance + Width / 2);
-        if (Tool is EditorTool.Line or EditorTool.Arrow) return Distance(point, Start, End) <= tolerance + Width * 2;
+        if (Tool == EditorTool.Arrow)
+        {
+            using var curve = ArrowGeometry.Path(this);
+            using var outline = new Pen(Color.Black, tolerance * 2 + Width * 2);
+            return curve.IsOutlineVisible(point, outline);
+        }
+        if (Tool == EditorTool.Line) return Distance(point, Start, End) <= tolerance + Width * 2;
         if (Bounds.Width < 1 || Bounds.Height < 1) return false;
         using var path = Tool == EditorTool.Ellipse ? EllipseGeometry.Path(this) : new GraphicsPath();
         if (Tool != EditorTool.Ellipse) path.AddRectangle(Bounds);
@@ -84,7 +94,8 @@ public sealed class Annotation
                 if (Bounds.Width > 0 && Bounds.Height > 0) { using var path = EllipseGeometry.Path(this); g.DrawPath(pen, path); }
                 break;
             case EditorTool.Arrow:
-                using (var cap = new AdjustableArrowCap(4, 5, true)) { pen.CustomEndCap = cap; if (DoubleHeaded) pen.CustomStartCap = cap; g.DrawLine(pen, Start, End); }
+                using (var cap = new AdjustableArrowCap(4, 5, true))
+                using (var curve = ArrowGeometry.Path(this)) { pen.CustomEndCap = cap; if (DoubleHeaded) pen.CustomStartCap = cap; g.DrawPath(pen, curve); }
                 break;
             case EditorTool.Line: g.DrawLine(pen, Start, End); break;
             case EditorTool.Text:
@@ -187,18 +198,33 @@ public sealed class ScreenshotDocument : IDisposable
     // Editor previews use the viewport resolution. Export always uses the original crop size.
     internal Bitmap RenderPreview(Size size, Annotation? excluded = null, int endIndex = int.MaxValue)
     {
+        using var sources = new MagnifierSources();
+        return RenderArea(Crop, size, excluded, endIndex, sources);
+    }
+    private Bitmap RenderArea(RectangleF area, Size size, Annotation? excluded, int endIndex, MagnifierSources sources)
+    {
         var result = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppArgb);
         using (var g = Graphics.FromImage(result))
         {
-            if (size != Crop.Size) g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            g.DrawImage(Original, new Rectangle(Point.Empty, size), Crop, GraphicsUnit.Pixel);
+            if (size.Width != area.Width || size.Height != area.Height) g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.DrawImage(Original, new RectangleF(PointF.Empty, size), area, GraphicsUnit.Pixel);
         }
-        DrawItems(result, 0, excluded, endIndex);
+        DrawItems(result, 0, excluded, endIndex, area, sources);
         return result;
     }
     internal void DrawItems(Bitmap result, int startIndex, Annotation? excluded = null, int endIndex = int.MaxValue)
     {
-        var sx = result.Width / (float)Crop.Width; var sy = result.Height / (float)Crop.Height;
+        using var sources = new MagnifierSources();
+        DrawItems(result, startIndex, excluded, endIndex, Crop, sources);
+    }
+    private sealed class MagnifierSources : IDisposable
+    {
+        internal readonly Dictionary<(int Index, Size Size), Bitmap> Images = [];
+        public void Dispose() { foreach (var image in Images.Values) image.Dispose(); }
+    }
+    private void DrawItems(Bitmap result, int startIndex, Annotation? excluded, int endIndex, RectangleF area, MagnifierSources sources)
+    {
+        var sx = result.Width / area.Width; var sy = result.Height / area.Height;
         for (var i = startIndex; i < Math.Min(Items.Count, endIndex); i++)
         {
             var item = Items[i];
@@ -206,9 +232,26 @@ public sealed class ScreenshotDocument : IDisposable
             if (item.Tool == EditorTool.Blur)
             {
                 var b = item.Bounds;
-                var r = Rectangle.Round(new RectangleF((b.X - Crop.X) * sx, (b.Y - Crop.Y) * sy, b.Width * sx, b.Height * sy));
+                var r = Rectangle.Round(new RectangleF((b.X - area.X) * sx, (b.Y - area.Y) * sy, b.Width * sx, b.Height * sy));
                 var radius = Math.Max(1, (int)Math.Round(Math.Clamp((int)item.Width * 3, 8, 64) * Math.Min(sx, sy)));
                 ImageBlur.Apply(result, r, radius);
+            }
+            else if (item.Tool == EditorTool.Magnifier)
+            {
+                if (!area.IntersectsWith(item.Bounds)) continue;
+                Bitmap? source = null;
+                if (!area.Contains(item.SourceBounds))
+                {
+                    // Cropping away the source must not erase its enlarged copy. Render only
+                    // earlier layers in source coordinates, caching repeated nested requests.
+                    var size = new Size(Math.Max(1, (int)Math.Ceiling(item.SourceBounds.Width * sx)), Math.Max(1, (int)Math.Ceiling(item.SourceBounds.Height * sy)));
+                    var key = (i, size);
+                    if (!sources.Images.TryGetValue(key, out source))
+                    {
+                        source = RenderArea(item.SourceBounds, size, excluded, i, sources); sources.Images.Add(key, source);
+                    }
+                }
+                MagnifierGeometry.Draw(result, item, area, source);
             }
             else
             {
@@ -216,7 +259,7 @@ public sealed class ScreenshotDocument : IDisposable
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 g.ScaleTransform(sx, sy);
-                g.TranslateTransform(-Crop.X, -Crop.Y);
+                g.TranslateTransform(-area.X, -area.Y);
                 item.Draw(g);
             }
         }

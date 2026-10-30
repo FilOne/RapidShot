@@ -4,7 +4,7 @@ namespace RapidShot;
 
 internal sealed partial class EditorCanvas
 {
-    private enum ObjectHandle { None, Move, TopLeft, Top, TopRight, Right, BottomRight, Bottom, BottomLeft, Left, Start, End }
+    private enum ObjectHandle { None, Move, TopLeft, Top, TopRight, Right, BottomRight, Bottom, BottomLeft, Left, Start, End, Curve }
     private Annotation? transformOriginal;
     private ObjectHandle transformHandle;
     private bool transformChanged;
@@ -18,7 +18,7 @@ internal sealed partial class EditorCanvas
         {
             yield return (ObjectHandle.Start, ToScreen(item.Start)); yield return (ObjectHandle.End, ToScreen(item.End)); yield break;
         }
-        var b = item.GeometryBounds;
+        var b = EditingMagnifierSource ? item.SourceBounds : item.GeometryBounds;
         // Give a dot or a perfectly straight pen stroke a usable selection frame.
         if (b.Width < 1) b.Inflate(.5f, 0);
         if (b.Height < 1) b.Inflate(0, .5f);
@@ -45,16 +45,23 @@ internal sealed partial class EditorCanvas
         ObjectHandle.TopRight or ObjectHandle.BottomLeft => Cursors.SizeNESW,
         ObjectHandle.Left or ObjectHandle.Right => Cursors.SizeWE,
         ObjectHandle.Top or ObjectHandle.Bottom => Cursors.SizeNS,
-        ObjectHandle.Start or ObjectHandle.End => Cursors.Cross,
+        ObjectHandle.Start or ObjectHandle.End or ObjectHandle.Curve => Cursors.Cross,
         ObjectHandle.Move => Cursors.SizeAll,
         _ => Cursors.Default
     };
     private void DrawObjectSelection(Graphics g)
     {
         if (Selected == null || Tool is EditorTool.Crop or EditorTool.Eraser || IsEditingText) return;
-        var b = Selected.GeometryBounds; var tl = ToScreen(b.Location); var br = ToScreen(new(b.Right, b.Bottom));
+        var b = EditingMagnifierSource ? Selected.SourceBounds : Selected.GeometryBounds; var tl = ToScreen(b.Location); var br = ToScreen(new(b.Right, b.Bottom));
         using var border = new Pen(Theme.Accent, 1) { DashStyle = DashStyle.Dash };
-        if (Selected.Tool is EditorTool.Arrow or EditorTool.Line) g.DrawLine(border, ToScreen(Selected.Start), ToScreen(Selected.End));
+        DrawMagnifierSource(g);
+        if (Selected.Tool == EditorTool.Arrow)
+        {
+            using var path = ArrowGeometry.Path(Selected);
+            using var matrix = new Matrix(zoom, 0, 0, zoom, imageBounds.X - Document.Crop.X * zoom, imageBounds.Y - Document.Crop.Y * zoom);
+            path.Transform(matrix); g.DrawPath(border, path);
+        }
+        else if (Selected.Tool == EditorTool.Line) g.DrawLine(border, ToScreen(Selected.Start), ToScreen(Selected.End));
         else g.DrawRectangle(border, tl.X, tl.Y, Math.Max(1, br.X - tl.X), Math.Max(1, br.Y - tl.Y));
         using var fill = new SolidBrush(Theme.Foreground); using var outline = new Pen(Theme.Accent, 1.5f);
         foreach (var (_, p) in ObjectHandles())
@@ -62,12 +69,13 @@ internal sealed partial class EditorCanvas
             var box = new RectangleF(p.X - 3.5f, p.Y - 3.5f, 7, 7);
             g.FillRectangle(fill, box); g.DrawRectangle(outline, box.X, box.Y, box.Width, box.Height);
         }
+        DrawCurveHandles(g);
     }
     private bool StartHandleDrag(MouseEventArgs e)
     {
         if (e.Clicks > 1 && Selected?.Tool == EditorTool.Text) return false;
         var handle = HitObjectHandle(e.Location);
-        if (handle == ObjectHandle.None) return false;
+        if (handle == ObjectHandle.None) return StartCurveDrag(e);
         StartObjectTransform(handle, ToImage(e.Location)); return true;
     }
     private void StartObjectTransform(ObjectHandle handle, PointF point)
@@ -75,18 +83,21 @@ internal sealed partial class EditorCanvas
         if (Selected == null) return;
         lastPenStrokeAt = 0;
         transformOriginal = Selected.Clone(); transformHandle = handle; transformChanged = false;
+        transformMagnifierSource = EditingMagnifierSource;
         ClearTransformPreview(); anchor = point; last = point; dragging = true; Capture = true;
         pointerPosition = point;
         Cursor = ObjectCursor(handle);
         HintChanged?.Invoke(handle == ObjectHandle.Move ? "Перемещение объекта · Ctrl+Z — отменить." : "Потяните маркер · Shift — равномерный размер · Ctrl+Z — отменить.");
-        if (shiftConstraint && handle != ObjectHandle.Move) MoveObjectTransform(point, true);
+        if (shiftConstraint && handle is not (ObjectHandle.Move or ObjectHandle.Curve)) MoveObjectTransform(point, true);
     }
     private void MoveObjectTransform(PointF point, bool force = false)
     {
         if (transformOriginal == null || Selected == null || (!force && point == last)) return;
         var original = transformOriginal; var item = original.Clone();
         var dx = point.X - anchor.X; var dy = point.Y - anchor.Y;
-        if (transformHandle == ObjectHandle.Move)
+        if (item.Tool == EditorTool.Magnifier) TransformMagnifier(item, original, dx, dy);
+        else if (transformHandle == ObjectHandle.Curve) MoveCurvePoint(item, original, dx, dy);
+        else if (transformHandle == ObjectHandle.Move)
         {
             item.Start = original.Start; item.End = original.End; item.Points = [.. original.Points]; item.Offset(dx, dy);
         }
@@ -116,9 +127,10 @@ internal sealed partial class EditorCanvas
             if (item.Tool == EditorTool.Pen) item.Points = original.Points.Select(Map).ToList();
         }
         last = point;
-        if (Selected.Start == item.Start && Selected.End == item.End && Selected.EllipseAngle == item.EllipseAngle && Selected.FontSize == item.FontSize && Selected.PinSize == item.PinSize && Selected.Points.SequenceEqual(item.Points)) return;
+        if (Selected.Start == item.Start && Selected.End == item.End && Selected.EllipseAngle == item.EllipseAngle && Selected.FontSize == item.FontSize && Selected.PinSize == item.PinSize && Selected.SourceBounds == item.SourceBounds && Selected.Magnification == item.Magnification && Selected.CurvePoints.SequenceEqual(item.CurvePoints) && Selected.Points.SequenceEqual(item.Points)) return;
         if (!transformChanged) { Document.BeginChange(); transformChanged = true; }
         Selected.Start = item.Start; Selected.End = item.End; Selected.Points = item.Points;
+        Selected.CurvePoints = item.CurvePoints; Selected.SourceBounds = item.SourceBounds; Selected.Magnification = item.Magnification;
         Selected.EllipseAngle = item.EllipseAngle; Selected.FontSize = item.FontSize; Selected.PinSize = item.PinSize;
         Document.NotifyChanged();
     }

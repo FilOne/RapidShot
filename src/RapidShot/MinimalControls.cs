@@ -2,7 +2,7 @@ using System.Drawing.Drawing2D;
 
 namespace RapidShot;
 
-internal enum UiIcon { None, Select, Pen, Line, Arrow, Rectangle, Ellipse, Text, Blur, Eraser, Crop, Pin, Save, Copy, Upload, Undo, Redo, Delete, Camera, Color, Cancel }
+internal enum UiIcon { None, Select, Pen, Line, Arrow, Rectangle, Ellipse, Text, Blur, Eraser, Crop, Pin, Magnifier, Save, Copy, Upload, Undo, Redo, Delete, Camera, Color, Cancel }
 
 internal class IconButton : Button
 {
@@ -112,6 +112,7 @@ internal static class UiGlyph
             case UiIcon.Text: Lines(new(3, 5), new(3, 3), new(17, 3), new(17, 5)); g.DrawLine(p, 10, 3, 10, 17); g.DrawLine(p, 7, 17, 13, 17); break;
             case UiIcon.Blur:
                 for (var x = 3; x <= 15; x += 4) for (var y = 3; y <= 15; y += 4) { using var dot = new SolidBrush(Color.FromArgb((x + y) % 3 == 0 ? 100 : 210, color)); g.FillRectangle(dot, x, y, 2, 2); } break;
+            case UiIcon.Magnifier: g.DrawEllipse(p, 3, 3, 10, 10); g.DrawLine(p, 12, 12, 17, 17); g.DrawLine(p, 6, 8, 10, 8); g.DrawLine(p, 8, 6, 8, 10); break;
             case UiIcon.Eraser: Lines(new(3, 11), new(11, 3), new(17, 9), new(9, 17), new(6, 17), new(3, 14), new(3, 11)); g.DrawLine(p, 8, 6, 14, 12); g.DrawLine(p, 8, 17, 17, 17); break;
             case UiIcon.Crop: Lines(new(5, 2), new(5, 15), new(18, 15)); Lines(new(2, 5), new(15, 5), new(15, 18)); break;
             case UiIcon.Pin: PinMarker.Draw(g, new Annotation { Tool = EditorTool.Pin, PinNumber = 1, PinSize = 14, Color = color, Start = new(3, 1), End = new(17, 18.5f) }); break;

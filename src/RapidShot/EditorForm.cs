@@ -20,14 +20,15 @@ internal sealed partial class EditorForm : Form, IThemeAware
     private readonly NumericUpDown fontSize, pinSize;
     private readonly PinNumberBox pinNumber;
     private Guid? pinNumberId;
-    private readonly ParameterSlider width, transparency;
-    private readonly Label widthLabel, transparencyLabel;
-    private readonly FlowLayoutPanel parameterBar, strokeControls, colorControls, arrowEnds, cropControls, pinControls;
+    private readonly ParameterSlider width, transparency, magnifierZoom;
+    private readonly Label widthLabel, transparencyLabel, magnifierZoomLabel;
+    private readonly FlowLayoutPanel parameterBar, strokeControls, colorControls, arrowEnds, cropControls, pinControls, curveControls, magnifierControls;
     private readonly Label nextPin;
     private readonly Panel transparencyControl, fontControls, arrowControls;
     private readonly RadioButton arrowOne, arrowTwo;
     private readonly CheckBox recognizeShapes;
     private readonly Button applyCrop, resetCrop;
+    private readonly Button addCurvePoint, removeCurvePoint, straightenArrow, magnifierSource;
     private readonly TableLayoutPanel workspace;
     private readonly ToolTip tips = new();
     private bool sliderUndoRecorded, exported, updatingStyle, hasToolParameters;
@@ -62,6 +63,7 @@ internal sealed partial class EditorForm : Form, IThemeAware
             [new(EditorTool.Rectangle, "▭", "Прямоугольник", "R"), new(EditorTool.Ellipse, "○", "Эллипс", "O")],
             [new(EditorTool.Text, "T", "Текст", "T")],
             [new(EditorTool.Pin, "1", "Пин", "N")],
+            [new(EditorTool.Magnifier, "+", "Лупа / увеличенный фрагмент", "M")],
             [new(EditorTool.Blur, "▦", "Размытие", "B"), new(EditorTool.Eraser, "◇", "Ластик", "E")],
             [new(EditorTool.Crop, "⌗", "Обрезка за края", "C")] ];
         foreach (var group in groups)
@@ -114,6 +116,32 @@ internal sealed partial class EditorForm : Form, IThemeAware
         arrowTwo.CheckedChanged += (_, _) => { canvas.DoubleHeaded = arrowTwo.Checked; UpdateArrowChoice(); if (!updatingStyle) canvas.UpdateSelectedStyle(); };
         arrowEnds.Controls.AddRange([arrowOne, arrowTwo]); UpdateArrowChoice();
         arrowControls = ParameterBox("Наконечники", arrowEnds, 124, out _); parameterBar.Controls.Add(arrowControls);
+        curveControls = new FlowLayoutPanel { Size = new(158, 38), WrapContents = false, Margin = Padding.Empty, Padding = new Padding(0, 7, 0, 0), AccessibleName = "Изгиб стрелки" };
+        addCurvePoint = Theme.Button("+", (_, _) => canvas.AddCurvePoint());
+        removeCurvePoint = Theme.Button("−", (_, _) => canvas.RemoveCurvePoint());
+        straightenArrow = Theme.Button("Прямая", (_, _) => canvas.StraightenArrow());
+        foreach (var button in new[] { addCurvePoint, removeCurvePoint, straightenArrow }) { button.AutoSize = false; button.Size = new(button == straightenArrow ? 66 : 40, 26); button.Padding = Padding.Empty; button.Margin = new Padding(2, 0, 2, 0); }
+        addCurvePoint.AccessibleName = "Добавить точку изгиба"; removeCurvePoint.AccessibleName = "Удалить выбранную точку изгиба"; straightenArrow.AccessibleName = "Выпрямить стрелку";
+        tips.SetToolTip(addCurvePoint, "Добавить точку изгиба. Можно также потянуть круглый маркер с плюсом или дважды щёлкнуть в любом месте линии.");
+        tips.SetToolTip(removeCurvePoint, "Удалить выбранную точку изгиба"); tips.SetToolTip(straightenArrow, "Убрать все изгибы, сохранив концы стрелки");
+        curveControls.Controls.AddRange([addCurvePoint, removeCurvePoint, straightenArrow]); parameterBar.Controls.Add(curveControls);
+        magnifierControls = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty, AccessibleName = "Параметры увеличенного фрагмента" };
+        magnifierZoom = new ParameterSlider { Minimum = 100, Maximum = 800, Value = 200, AccessibleName = "Масштаб увеличения" };
+        magnifierControls.Controls.Add(ParameterBox("Увеличение: 2×", magnifierZoom, 136, out magnifierZoomLabel));
+        magnifierZoom.ValueChanged += (_, _) =>
+        {
+            magnifierZoomLabel.Text = $"Увеличение: {magnifierZoom.Value / 100f:0.##}×";
+            canvas.MagnifierZoom = magnifierZoom.Value / 100f;
+            if (updatingStyle) return;
+            canvas.UpdateMagnifierZoom(!magnifierZoom.IsInteracting || !sliderUndoRecorded);
+            if (magnifierZoom.IsInteracting && canvas.Selected?.Tool == EditorTool.Magnifier) sliderUndoRecorded = true;
+        };
+        magnifierZoom.InteractionStarted += () => sliderUndoRecorded = false; magnifierZoom.InteractionEnded += () => sliderUndoRecorded = false;
+        tips.SetToolTip(magnifierZoom, "Увеличение от 1× до 8×. Размер копии ограничен границами снимка.");
+        magnifierSource = Theme.Button("Источник", (_, _) => canvas.ToggleMagnifierSource());
+        magnifierSource.AutoSize = false; magnifierSource.Size = new(96, 30); magnifierSource.Padding = Padding.Empty; magnifierSource.Margin = new Padding(4, 4, 4, 0); magnifierSource.AccessibleName = "Редактировать исходную область увеличения";
+        tips.SetToolTip(magnifierSource, "Показать исходную область: её можно переместить или изменить за маркеры. Обводка увеличенного фрагмента настраивается цветом и толщиной.");
+        magnifierControls.Controls.Add(magnifierSource); parameterBar.Controls.Add(magnifierControls);
         fontSize = new NumericUpDown { Minimum = 10, Maximum = 160, Value = 28, BackColor = Theme.Raised, ForeColor = Theme.Foreground, AccessibleName = "Размер текста" };
         fontSize.ValueChanged += (_, _) => { canvas.TextSize = (float)fontSize.Value; if (!updatingStyle) canvas.UpdateSelectedStyle(); };
         fontControls = ParameterBox("Текст, px", fontSize, 104, out _); parameterBar.Controls.Add(fontControls);
@@ -209,6 +237,7 @@ internal sealed partial class EditorForm : Form, IThemeAware
             fontSize.Value = Math.Clamp((decimal)selected.FontSize, fontSize.Minimum, fontSize.Maximum);
             if (selected.Tool == EditorTool.Pin) { canvas.PinSize = selected.PinSize; pinSize.Value = Math.Clamp((decimal)selected.PinSize, pinSize.Minimum, pinSize.Maximum); }
             if (selected.Tool == EditorTool.Arrow) { canvas.DoubleHeaded = selected.DoubleHeaded; arrowTwo.Checked = selected.DoubleHeaded; arrowOne.Checked = !selected.DoubleHeaded; }
+            if (selected.Tool == EditorTool.Magnifier) { canvas.MagnifierZoom = selected.Magnification; magnifierZoom.Value = Math.Clamp((int)Math.Round(selected.Magnification * 100), magnifierZoom.Minimum, magnifierZoom.Maximum); }
             updatingStyle = false;
         }
         UpdatePropertyVisibility();
@@ -216,7 +245,7 @@ internal sealed partial class EditorForm : Form, IThemeAware
     private void SetColor(Color color) { canvas.Ink = color; customColor.FlatAppearance.BorderColor = color; canvas.UpdateSelectedStyle(); }
     private void UpdateSliderLabels()
     {
-        widthLabel.Text = ParameterTool == EditorTool.Blur ? $"Размытие: {width.Value}" : $"Толщина: {width.Value} px";
+        widthLabel.Text = ParameterTool == EditorTool.Blur ? $"Размытие: {width.Value}" : ParameterTool == EditorTool.Magnifier ? $"Обводка: {width.Value} px" : $"Толщина: {width.Value} px";
         transparencyLabel.Text = $"Прозрачность: {transparency.Value} %";
     }
     private void ApplySliderStyle(ParameterSlider slider)
@@ -230,24 +259,31 @@ internal sealed partial class EditorForm : Form, IThemeAware
     {
         foreach (var choice in new[] { arrowOne, arrowTwo }) { choice.BackColor = choice.Checked ? Theme.Accent : Theme.Raised; choice.ForeColor = choice.Checked ? Theme.OnAccent : Theme.Foreground; }
     }
-    private void UpdateHistory() { undo.Enabled = document.CanUndo || canvas.HasCropChanges || canvas.IsResizingCapture; redo.Enabled = document.CanRedo; }
+    private void UpdateHistory() { undo.Enabled = document.CanUndo || canvas.HasCropChanges || canvas.IsResizingCapture || canvas.HasMagnifierDraft; redo.Enabled = document.CanRedo; }
     private void Undo()
     {
         if (canvas.CancelCaptureResize()) return;
+        if (canvas.HasMagnifierDraft) { canvas.CancelGesture(false); return; }
         if (canvas.HasCropChanges) { canvas.CancelCrop(); return; }
         canvas.CommitText(); canvas.CancelGesture(false); document.Undo();
     }
     private void UpdatePropertyVisibility()
     {
         var cropping = canvas.Tool == EditorTool.Crop; var context = ParameterTool;
-        colorControls.Visible = !cropping && (Annotation.IsStrokeTool(context) || context is EditorTool.Text or EditorTool.Pin);
+        colorControls.Visible = !cropping && (Annotation.IsStrokeTool(context) || context is EditorTool.Text or EditorTool.Pin or EditorTool.Magnifier);
         cropControls.Visible = cropping; arrowControls.Visible = !cropping && context == EditorTool.Arrow;
+        curveControls.Visible = !cropping && context == EditorTool.Arrow;
+        addCurvePoint.Enabled = canvas.Selected?.Tool == EditorTool.Arrow; removeCurvePoint.Enabled = canvas.CanRemoveCurvePoint;
+        straightenArrow.Enabled = canvas.Selected is { Tool: EditorTool.Arrow, CurvePoints.Count: > 0 };
+        magnifierControls.Visible = !cropping && context == EditorTool.Magnifier;
+        magnifierSource.Enabled = canvas.Selected?.Tool == EditorTool.Magnifier;
+        magnifierSource.Text = canvas.EditingMagnifierSource ? "Готово" : "Источник";
         fontControls.Visible = !cropping && canvas.Tool == EditorTool.Text;
         var strokes = Annotation.IsStrokeTool(context);
-        strokeControls.Visible = !cropping && (strokes || context == EditorTool.Blur); transparencyControl.Visible = strokes;
+        strokeControls.Visible = !cropping && (strokes || context is EditorTool.Blur or EditorTool.Magnifier); transparencyControl.Visible = strokes;
         recognizeShapes.Visible = !cropping && canvas.Tool == EditorTool.Pen;
         pinControls.Visible = !cropping && context == EditorTool.Pin;
-        hasToolParameters = cropping || strokes || context is EditorTool.Blur or EditorTool.Text or EditorTool.Pin || canvas.Tool == EditorTool.Text || canvas.Tool == EditorTool.Pen;
+        hasToolParameters = cropping || strokes || context is EditorTool.Blur or EditorTool.Text or EditorTool.Pin or EditorTool.Magnifier || canvas.Tool == EditorTool.Text || canvas.Tool == EditorTool.Pen;
         parameterBar.Visible = hasToolParameters && (!isRegionCapture || regionEditing);
         // Keep the normal editor's viewport stable when selection parameters
         // appear during a drag. The desktop overlay has fixed image coordinates.
@@ -279,6 +315,8 @@ internal sealed partial class EditorForm : Form, IThemeAware
             EditorTool.Pin => "Щелчок ставит следующий пин. Цвет, размер и номер — снизу. V — перенос, Delete — удалить.",
             EditorTool.Rectangle => "Рисуйте прямоугольник. Shift — квадрат при рисовании и изменении размера.",
             EditorTool.Ellipse => "Рисуйте эллипс. Shift — круг при рисовании и изменении размера.",
+            EditorTool.Arrow => "Нарисуйте стрелку, затем потяните маркер с плюсом. Двойной щелчок по линии добавляет точку изгиба.",
+            EditorTool.Magnifier => "Выделите исходный фрагмент мышью, затем щёлкните, где разместить увеличенную копию. Масштаб и обводка — снизу.",
             _ => "Параметры снизу изменяют активную пометку. Esc — снять выделение."
         };
     }
@@ -382,13 +420,14 @@ internal sealed partial class EditorForm : Form, IThemeAware
         if (keyData == Keys.Escape)
         {
             if (canvas.CancelCaptureResize()) return true;
+            if (canvas.HasMagnifierDraft) { canvas.CancelGesture(false); return true; }
             if (isRegionCapture && !canvas.HasCropChanges && canvas.Selected == null) Close();
             else canvas.CancelGesture();
             return true;
         }
         if (ActiveControl is NumericUpDown || ActiveControl is TextBoxBase) return base.ProcessCmdKey(ref msg, keyData);
         if (keyData == Keys.Delete) { canvas.DeleteSelected(); return true; }
-        var tool = keyData switch { Keys.V => EditorTool.Select, Keys.P => EditorTool.Pen, Keys.R => EditorTool.Rectangle, Keys.O => EditorTool.Ellipse, Keys.A => EditorTool.Arrow, Keys.L => EditorTool.Line, Keys.T => EditorTool.Text, Keys.N => EditorTool.Pin, Keys.B => EditorTool.Blur, Keys.E => EditorTool.Eraser, Keys.C => EditorTool.Crop, _ => (EditorTool?)null };
+        var tool = keyData switch { Keys.V => EditorTool.Select, Keys.P => EditorTool.Pen, Keys.R => EditorTool.Rectangle, Keys.O => EditorTool.Ellipse, Keys.A => EditorTool.Arrow, Keys.L => EditorTool.Line, Keys.T => EditorTool.Text, Keys.N => EditorTool.Pin, Keys.M => EditorTool.Magnifier, Keys.B => EditorTool.Blur, Keys.E => EditorTool.Eraser, Keys.C => EditorTool.Crop, _ => (EditorTool?)null };
         if (tool.HasValue) { SelectTool(tool.Value); return true; }
         return base.ProcessCmdKey(ref msg, keyData);
     }
