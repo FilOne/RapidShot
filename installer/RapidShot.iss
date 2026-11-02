@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.22.1"
+  #define AppVersion "1.23.0"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\dist\RapidShot"
@@ -56,3 +56,14 @@ Name: "{userdesktop}\RapidShot"; Filename: "{app}\RapidShot.exe"; WorkingDir: "{
 
 [Run]
 Filename: "{app}\RapidShot.exe"; Description: "{cm:LaunchProgram,RapidShot}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  StartupCommand: String;
+begin
+  if CurUninstallStep = usPostUninstall then
+    if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'RapidShot', StartupCommand) then
+      if CompareText(StartupCommand, '"' + ExpandConstant('{app}\RapidShot.exe') + '" --autostart') = 0 then
+        RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'RapidShot');
+end;

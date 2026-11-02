@@ -14,7 +14,7 @@ public sealed class YapxClient : IDisposable
     public YapxClient(HttpClient? client = null)
     {
         http = client ?? new HttpClient(new HttpClientHandler { CookieContainer = new CookieContainer(), AutomaticDecompression = DecompressionMethods.All }) { Timeout = TimeSpan.FromSeconds(60) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("RapidShot/1.22");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("RapidShot/1.23");
     }
     public async Task<UploadResult> UploadAsync(byte[] png, CancellationToken cancellation = default)
     {

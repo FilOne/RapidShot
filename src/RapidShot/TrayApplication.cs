@@ -9,26 +9,32 @@ internal sealed class TrayApplication : ApplicationContext
     private readonly HotkeyWindow hotkey = new();
     private readonly List<EditorForm> editors = [];
     private readonly ToolStripMenuItem captureItem, captureScreenItem;
+    private readonly AutostartService autostart = new();
+    private readonly ToolStripMenuItem autostartItem;
     private SettingsDialog? settingsDialog;
     private bool capturing;
     private bool hotkeyRegistered;
     public TrayApplication(string[] args)
     {
-        var menu = new ContextMenuStrip();
+        var isAutostart = args.Contains("--autostart", StringComparer.OrdinalIgnoreCase);
+        var menu = new ContextMenuStrip { ShowItemToolTips = true };
         Theme.Menu(menu);
         captureItem = new("Снимок области", null, async (_, _) => await Capture(true));
         menu.Items.Add(captureItem);
         menu.Items.Add("Снимок всех экранов", null, async (_, _) => await Capture(false));
         captureScreenItem = new("Снимок экрана"); menu.Items.Add(captureScreenItem);
-        menu.Opening += (_, _) => UpdateScreens();
+        menu.Opening += (_, _) => { UpdateScreens(); UpdateAutostart(); };
         menu.Items.Add("Открыть изображение…", null, (_, _) => OpenImage());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Настройки…", null, (_, _) => ShowSettings());
+        autostartItem = new("Запускать с Windows", null, (_, _) => ToggleAutostart()) { CheckOnClick = false, AccessibleName = "Запускать RapidShot с Windows" };
+        menu.Items.Add(autostartItem);
         menu.Items.Add("Папка скриншотов", null, (_, _) => OpenFolder());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Выход", null, (_, _) => Exit());
         tray = new NotifyIcon { Icon = Theme.CreateIcon(), Text = "RapidShot", ContextMenuStrip = menu, Visible = true };
         UpdateScreens();
+        UpdateAutostart();
         tray.DoubleClick += async (_, _) => await Capture(settings.CaptureRegion, settings.CaptureDeviceName);
         hotkey.Pressed += async () => await Capture(settings.CaptureRegion, settings.CaptureDeviceName);
         hotkeyRegistered = hotkey.Register(settings.Modifiers, settings.Key);
@@ -39,7 +45,12 @@ internal sealed class TrayApplication : ApplicationContext
             timer.Stop(); timer.Dispose();
             if (args.Contains("--demo")) ShowEditor(CreateDemo());
             else if (args.Contains("--settings")) ShowSettings();
-            if (hotkeyRegistered) tray.ShowBalloonTip(4000, "RapidShot готов", $"Снимок: {settings.HotkeyLabel}. Настройки и выход — в меню значка.", ToolTipIcon.Info);
+            if (hotkeyRegistered)
+            {
+                if (!isAutostart) tray.ShowBalloonTip(4000, "RapidShot готов", $"Снимок: {settings.HotkeyLabel}. Настройки и выход — в меню значка.", ToolTipIcon.Info);
+            }
+            else if (isAutostart)
+                tray.ShowBalloonTip(6000, "RapidShot — горячая клавиша занята", $"Не удалось зарегистрировать {settings.HotkeyLabel}. Выберите другое сочетание в настройках. Меню трея доступно.", ToolTipIcon.Warning);
             else
             {
                 MessageBox.Show($"Не удалось зарегистрировать {settings.HotkeyLabel}. Возможно, сочетание занято другой программой. Выберите другое сочетание в настройках. Снимки через меню трея доступны.", "RapidShot", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -47,6 +58,25 @@ internal sealed class TrayApplication : ApplicationContext
             }
         };
         timer.Start();
+    }
+    private void UpdateAutostart()
+    {
+        try
+        {
+            autostartItem.Checked = autostart.IsEnabled; autostartItem.Enabled = true;
+            autostartItem.ToolTipText = "Автоматически запускать RapidShot в трее после входа в Windows";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            autostartItem.Enabled = false; autostartItem.ToolTipText = "Не удалось прочитать настройку автозапуска: " + ex.Message;
+        }
+    }
+    private void ToggleAutostart()
+    {
+        try { autostart.SetEnabled(!autostart.IsEnabled); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        { MessageBox.Show(ex.Message, "Не удалось изменить автозапуск", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        finally { UpdateAutostart(); }
     }
     private void UpdateTray()
     {
