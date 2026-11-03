@@ -9,9 +9,12 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>RapidShot</AssemblyName>
     <RootNamespace>RapidShot</RootNamespace>
-    <Version>1.23.0</Version>
+    <Version>1.23.1</Version>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Copyright>Copyright (c) 2026 WhiteHillTeam and contributors</Copyright>
     <ApplicationIcon>..\..\installer\assets\RapidShot.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\shutter.wav" LogicalName="RapidShot.Assets.shutter.wav" />
+  </ItemGroup>
 </Project>

@@ -15,7 +15,7 @@ internal static class Program
         }
         Application.ThreadException += (_, e) => MessageBox.Show(e.Exception.Message, "RapidShot — ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
         Theme.Initialize(AppSettings.Load().ThemeMode);
-        try { using var context = new TrayApplication(args); Application.Run(context); }
-        finally { Theme.Shutdown(); }
+        try { CaptureFeedback.Initialize(); using var context = new TrayApplication(args); Application.Run(context); }
+        finally { CaptureFeedback.Shutdown(); Theme.Shutdown(); }
     }
 }

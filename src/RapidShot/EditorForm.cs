@@ -348,6 +348,7 @@ internal sealed partial class EditorForm : Form, IThemeAware
             using var image = document.Render();
             ImageClipboard.Write(image);
             exported = true; status.Text = "Изображение скопировано в буфер обмена.";
+            CaptureFeedback.Play();
             if (isRegionCapture) Close();
         }
         catch (Exception ex) { ShowError("Не удалось скопировать снимок", ex); }
