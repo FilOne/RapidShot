@@ -2,7 +2,7 @@ using System.Drawing.Drawing2D;
 
 namespace RapidShot;
 
-internal enum UiIcon { None, Select, Pen, Line, Arrow, Rectangle, Ellipse, Text, Blur, Eraser, Crop, Pin, Magnifier, Save, Copy, Upload, Undo, Redo, Delete, Camera, Color, Cancel }
+internal enum UiIcon { None, Select, Pen, Line, Arrow, Rectangle, Ellipse, Text, Blur, Eraser, Crop, Pin, Magnifier, Save, Copy, Upload, Undo, Redo, Delete, Camera, Color, Cancel, Ocr }
 
 internal class IconButton : Button
 {
@@ -110,6 +110,15 @@ internal static class UiGlyph
             case UiIcon.Rectangle: g.DrawRectangle(p, 3, 4, 14, 12); break;
             case UiIcon.Ellipse: g.DrawEllipse(p, 3, 3, 14, 14); break;
             case UiIcon.Text: Lines(new(3, 5), new(3, 3), new(17, 3), new(17, 5)); g.DrawLine(p, 10, 3, 10, 17); g.DrawLine(p, 7, 17, 13, 17); break;
+            case UiIcon.Ocr:
+                Lines(new(3, 7), new(3, 3), new(7, 3));
+                Lines(new(13, 3), new(17, 3), new(17, 7));
+                Lines(new(3, 13), new(3, 17), new(7, 17));
+                Lines(new(13, 17), new(17, 17), new(17, 13));
+                g.DrawLine(p, 7, 7, 13, 7);
+                g.DrawLine(p, 7, 10, 13, 10);
+                g.DrawLine(p, 7, 13, 11, 13);
+                break;
             case UiIcon.Blur:
                 for (var x = 3; x <= 15; x += 4) for (var y = 3; y <= 15; y += 4) { using var dot = new SolidBrush(Color.FromArgb((x + y) % 3 == 0 ? 100 : 210, color)); g.FillRectangle(dot, x, y, 2, 2); } break;
             case UiIcon.Magnifier: g.DrawEllipse(p, 3, 3, 10, 10); g.DrawLine(p, 12, 12, 17, 17); g.DrawLine(p, 6, 8, 10, 8); g.DrawLine(p, 8, 6, 8, 10); break;

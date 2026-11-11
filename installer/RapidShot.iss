@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.23.1"
+  #define AppVersion "1.24.0"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\dist\RapidShot"
@@ -49,6 +49,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#SourceDir}\RapidShot.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\ocr\*"; DestDir: "{app}\ocr"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{userprograms}\RapidShot\RapidShot"; Filename: "{app}\RapidShot.exe"; WorkingDir: "{app}"

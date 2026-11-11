@@ -10,7 +10,7 @@ internal sealed partial class EditorForm : Form, IThemeAware
     private readonly EditorCanvas canvas;
     private readonly AppSettings settings;
     private readonly Label status, activeItem;
-    private readonly Button undo, redo, copy, delete, customColor;
+    private readonly Button undo, redo, copy, delete, customColor, recognizeText;
     private readonly ToolStripMenuItem save, upload;
     private readonly CaptureSplitButton capture;
     private readonly FloatingBar toolBar;
@@ -56,7 +56,10 @@ internal sealed partial class EditorForm : Form, IThemeAware
         capture.CopyRequested += CopyImage; capture.MenuRequested += ShowCaptureMenu;
         tips.SetToolTip(copy, "Захват — скопировать изображение в буфер · Ctrl+C");
         tips.SetToolTip(capture.MenuAction, "Сохранить снимок или загрузить на Yapx");
-        toolBar.Controls.AddRange([capture, Separator()]);
+        recognizeText = new IconButton(UiIcon.Ocr, "Распознать и скопировать текст") { Text = "OCR", ShowText = true, Width = 74 };
+        recognizeText.Click += async (_, _) => await CopyRecognizedTextAsync();
+        tips.SetToolTip(recognizeText, "OCR — распознать текст и скопировать в буфер");
+        toolBar.Controls.AddRange([capture, recognizeText, Separator()]);
         ToolDefinition[][] groups = [
             [new(EditorTool.Select, "↖", "Выбор / перенос", "V")],
             [new(EditorTool.Pen, "✎", "Карандаш", "P"), new(EditorTool.Line, "╱", "Линия", "L"), new(EditorTool.Arrow, "↗", "Стрелка", "A")],
@@ -360,7 +363,7 @@ internal sealed partial class EditorForm : Form, IThemeAware
         using var cancellation = new CancellationTokenSource(); uploading = cancellation;
         var completed = false;
         workspace.Enabled = false;
-        canvas.SetInputEnabled(false); save.Enabled = copy.Enabled = false;
+        canvas.SetInputEnabled(false); save.Enabled = copy.Enabled = recognizeText.Enabled = false;
         foreach (var button in tools.Values.Distinct()) button.Enabled = false;
         parameterBar.Enabled = false; delete.Enabled = false; undo.Enabled = redo.Enabled = false;
         upload.Text = "Отменить загрузку на Yapx"; SetMenuIcon(upload, UiIcon.Cancel); status.Text = "Загрузка изображения на Yapx…";
@@ -385,7 +388,7 @@ internal sealed partial class EditorForm : Form, IThemeAware
             uploading = null;
             if (!IsDisposed)
             {
-                canvas.SetInputEnabled(true); save.Enabled = copy.Enabled = true;
+                canvas.SetInputEnabled(true); save.Enabled = copy.Enabled = recognizeText.Enabled = true;
                 upload.Text = "Загрузить на Yapx"; SetMenuIcon(upload, UiIcon.Upload);
                 workspace.Enabled = true;
                 foreach (var button in tools.Values.Distinct()) button.Enabled = true;
@@ -404,6 +407,11 @@ internal sealed partial class EditorForm : Form, IThemeAware
         if (isRegionCapture && !regionEditing)
         {
             if (keyData == Keys.Escape) Close();
+            return true;
+        }
+        if (recognizingText != null)
+        {
+            if (keyData == Keys.Escape) recognizingText.Cancel();
             return true;
         }
         if (uploading != null) return base.ProcessCmdKey(ref msg, keyData);
@@ -435,6 +443,7 @@ internal sealed partial class EditorForm : Form, IThemeAware
     private void ClosingEditor(object? sender, FormClosingEventArgs e)
     {
         if (isRegionCapture && !regionEditing) return;
+        if (recognizingText != null) { e.Cancel = true; recognizingText.Cancel(); return; }
         if (uploading != null) { e.Cancel = true; uploading.Cancel(); return; }
         CommitPinNumber(); canvas.CommitEdits();
         if (exported) return;
@@ -443,6 +452,7 @@ internal sealed partial class EditorForm : Form, IThemeAware
     }
     protected override void Dispose(bool disposing)
     {
+        if (disposing) recognizingText?.Cancel();
         if (disposing) { tips.Dispose(); foreach (ToolStripItem item in captureMenu.Items) item.Image?.Dispose(); captureMenu.Dispose(); foreach (ToolStripItem item in colorMenu.Items) item.Image?.Dispose(); colorMenu.Dispose(); canvas.Dispose(); document.Dispose(); }
         base.Dispose(disposing);
     }

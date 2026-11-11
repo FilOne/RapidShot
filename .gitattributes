@@ -7,3 +7,4 @@
 .gitignore text eol=lf
 .gitattributes text eol=lf
 SHA256SUMS text eol=lf
+src/RapidShot/OcrData/LICENSE* -whitespace
