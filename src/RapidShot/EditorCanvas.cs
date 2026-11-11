@@ -45,6 +45,7 @@ internal sealed partial class EditorCanvas : Control
     private bool dragging, erased;
     private float zoom = 1;
     private RectangleF imageBounds;
+    private IReadOnlyList<RectangleF> ocrHighlights = [];
     private InlineTextBox? textEditor;
     private Annotation? textOriginal, textDraft;
     private Font? textEditorFont;
@@ -154,6 +155,18 @@ internal sealed partial class EditorCanvas : Control
         g.SetClip(imageBounds, CombineMode.Intersect);
         g.TranslateTransform(imageBounds.X, imageBounds.Y); g.ScaleTransform(zoom, zoom); g.TranslateTransform(-Document.Crop.X, -Document.Crop.Y);
         g.SmoothingMode = SmoothingMode.AntiAlias;
+        if (!IsResizingCapture && ocrHighlights.Count != 0)
+        {
+            using var fill = new SolidBrush(Color.FromArgb(42, Theme.Accent));
+            using var border = new Pen(Theme.Accent, 1 / zoom);
+            foreach (var word in ocrHighlights)
+            {
+                var bounds = word;
+                bounds.Offset(Document.Crop.Location);
+                g.FillRectangle(fill, bounds);
+                g.DrawRectangle(border, bounds.X, bounds.Y, bounds.Width, bounds.Height);
+            }
+        }
         if (pending != null)
         {
             if (pending.Tool == EditorTool.Magnifier) DrawMagnifierDraft(g);
@@ -175,6 +188,12 @@ internal sealed partial class EditorCanvas : Control
         else TextRenderer.DrawText(g, $"{Document.Crop.Width} × {Document.Crop.Height} px   ·   {zoom:P0}", Font, new Point((int)imageBounds.X, (int)imageBounds.Bottom + 9), Theme.Muted);
     }
     private PointF ToImage(Point point) => new(Math.Clamp((point.X - imageBounds.X) / zoom + Document.Crop.X, Document.Crop.Left, Document.Crop.Right), Math.Clamp((point.Y - imageBounds.Y) / zoom + Document.Crop.Y, Document.Crop.Top, Document.Crop.Bottom));
+    internal void SetOcrHighlights(IReadOnlyList<RectangleF> words)
+    {
+        if (ocrHighlights.Count == 0 && words.Count == 0) return;
+        ocrHighlights = words;
+        Invalidate();
+    }
     private Annotation? Find(PointF point) => Document.Items.LastOrDefault(x => x.HitTest(point, 5 / zoom));
     protected override void OnMouseDown(MouseEventArgs e)
     {

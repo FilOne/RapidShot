@@ -2,39 +2,36 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using System.Globalization;
 using System.Text;
 
 namespace RapidShot;
 
+internal sealed record OcrResult(string Text, IReadOnlyList<RectangleF> Words);
+
 internal static class OcrService
 {
-    private const string MissingRuntime = "Для распознавания текста установите Microsoft Visual C++ Redistributable (x64).";
+    private const int ImagePadding = 12;
 
-    internal static async Task<string> RecognizeAsync(Bitmap image, CancellationToken cancellationToken)
+    internal static async Task<OcrResult> RecognizeAsync(Bitmap image, CancellationToken cancellationToken)
     {
         var directory = Path.Combine(AppContext.BaseDirectory, "ocr");
         var executable = Path.Combine(directory, "tesseract.exe");
         if (!File.Exists(executable))
             throw new FileNotFoundException("Не найден модуль OCR. Переустановите RapidShot или восстановите папку ocr рядом с программой.");
-        foreach (var library in new[] { "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll" })
-        {
-            if (!File.Exists(Path.Combine(Environment.SystemDirectory, library)) && !File.Exists(Path.Combine(directory, library)))
-                throw new InvalidOperationException(MissingRuntime);
-        }
-
-        using var png = new MemoryStream();
+        using var bitmap = new MemoryStream();
         var scale = (long)image.Width * image.Height <= 1_000_000 && Math.Max(image.Width, image.Height) <= 4000 ? 2 : 1;
-        using (var prepared = new Bitmap(image.Width * scale + 24, image.Height * scale + 24, PixelFormat.Format24bppRgb))
+        using (var prepared = new Bitmap(image.Width * scale + ImagePadding * 2, image.Height * scale + ImagePadding * 2, PixelFormat.Format24bppRgb))
         {
             using (var graphics = Graphics.FromImage(prepared))
             {
                 graphics.Clear(image.GetPixel(0, 0));
                 graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                graphics.DrawImage(image, new Rectangle(12, 12, image.Width * scale, image.Height * scale));
+                graphics.DrawImage(image, new Rectangle(ImagePadding, ImagePadding, image.Width * scale, image.Height * scale));
             }
-            prepared.Save(png, ImageFormat.Png);
+            prepared.Save(bitmap, ImageFormat.Bmp);
         }
-        png.Position = 0;
+        bitmap.Position = 0;
         cancellationToken.ThrowIfCancellationRequested();
 
         var startInfo = new ProcessStartInfo(executable)
@@ -49,9 +46,8 @@ internal static class OcrService
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
-        foreach (var argument in new[] { "stdin", "stdout", "--tessdata-dir", "tessdata", "-l", "rus+eng", "--dpi", scale == 2 ? "300" : "150" })
+        foreach (var argument in new[] { "stdin", "stdout", "--tessdata-dir", "tessdata", "-l", "rus+eng", "--oem", "1", "--dpi", scale == 2 ? "300" : "150", "-c", "tessedit_create_tsv=1" })
             startInfo.ArgumentList.Add(argument);
-        startInfo.Environment["OMP_THREAD_LIMIT"] = "2";
 
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Не удалось запустить модуль OCR.");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -72,22 +68,20 @@ internal static class OcrService
             try
             {
                 using var input = process.StandardInput;
-                await png.CopyToAsync(input.BaseStream, timeout.Token).ConfigureAwait(false);
+                await bitmap.CopyToAsync(input.BaseStream, timeout.Token).ConfigureAwait(false);
             }
             catch (IOException ex) { inputError = ex; }
 
             await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
             timeout.Token.ThrowIfCancellationRequested();
             var diagnostics = await errors.ConfigureAwait(false);
-            if (process.ExitCode is unchecked((int)0xC0000135) or unchecked((int)0xC000007B))
-                throw new InvalidOperationException(MissingRuntime);
             if (process.ExitCode != 0)
                 throw new InvalidOperationException(string.IsNullOrWhiteSpace(diagnostics)
                     ? "Модуль OCR завершился с ошибкой."
                     : diagnostics.Trim());
             if (inputError != null)
                 throw new IOException("Не удалось передать снимок в модуль OCR.", inputError);
-            return (await output.ConfigureAwait(false)).Trim().ReplaceLineEndings();
+            return ParseResult(await output.ConfigureAwait(false), image.Size, scale);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -97,5 +91,39 @@ internal static class OcrService
         {
             if (!process.HasExited) timeout.Cancel();
         }
+    }
+
+    private static OcrResult ParseResult(string tsv, Size imageSize, int scale)
+    {
+        var text = new StringBuilder();
+        var words = new List<RectangleF>();
+        var imageBounds = new RectangleF(PointF.Empty, imageSize);
+        (string Page, string Block, string Paragraph, string Line)? previousLine = null;
+        using var reader = new StringReader(tsv);
+        while (reader.ReadLine() is { } row)
+        {
+            var fields = row.Split('\t', 12);
+            if (fields.Length != 12 || fields[0] != "5") continue;
+            var word = fields[11].Trim();
+            if (word.Length == 0) continue;
+
+            var line = (fields[1], fields[2], fields[3], fields[4]);
+            if (previousLine == line) text.Append(' ');
+            else if (previousLine.HasValue) text.AppendLine();
+            text.Append(word);
+            previousLine = line;
+
+            if (int.TryParse(fields[6], CultureInfo.InvariantCulture, out var x)
+                && int.TryParse(fields[7], CultureInfo.InvariantCulture, out var y)
+                && int.TryParse(fields[8], CultureInfo.InvariantCulture, out var width)
+                && int.TryParse(fields[9], CultureInfo.InvariantCulture, out var height))
+            {
+                var bounds = new RectangleF((x - ImagePadding) / (float)scale, (y - ImagePadding) / (float)scale,
+                    width / (float)scale, height / (float)scale);
+                bounds.Intersect(imageBounds);
+                if (!bounds.IsEmpty) words.Add(bounds);
+            }
+        }
+        return new OcrResult(text.ToString(), words);
     }
 }

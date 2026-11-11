@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.24.0"
+  #define AppVersion "1.25.0"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\dist\RapidShot"
@@ -59,6 +59,15 @@ Name: "{userdesktop}\RapidShot"; Filename: "{app}\RapidShot.exe"; WorkingDir: "{
 Filename: "{app}\RapidShot.exe"; Description: "{cm:LaunchProgram,RapidShot}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+  begin
+    DeleteFile(ExpandConstant('{app}\ocr\tesseract55.dll'));
+    DeleteFile(ExpandConstant('{app}\ocr\leptonica-1.85.0.dll'));
+  end;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   StartupCommand: String;

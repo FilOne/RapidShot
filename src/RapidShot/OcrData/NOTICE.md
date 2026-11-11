@@ -1,7 +1,7 @@
 # OCR components
 
-The OCR engine is Tesseract 5.5.0 with Leptonica 1.85.0, distributed in the Windows x64 binaries from the [TesseractOCR 5.5.2 NuGet package](https://www.nuget.org/packages/TesseractOCR/5.5.2). English and Russian trained data come from [tessdata_fast 4.1.0](https://github.com/tesseract-ocr/tessdata_fast/tree/4.1.0). Tesseract and the trained data use the Apache License 2.0 included in LICENSE.
+The Windows x64 engine is built from [Tesseract 5.5.2](https://github.com/tesseract-ocr/tesseract/releases/tag/5.5.2) and [Leptonica 1.85.0](https://github.com/DanBloomberg/leptonica/tree/1.85.0) using [LLVM-MinGW 20260616 UCRT](https://github.com/mstorsjo/llvm-mingw/releases/tag/20260616). English and Russian trained data come from [tessdata_fast 4.1.0](https://github.com/tesseract-ocr/tessdata_fast/tree/4.1.0).
 
-Leptonica and its bundled giflib, libjpeg-turbo, libpng, libtiff, and zlib components retain their respective licenses in this directory.
+The executable links Leptonica and the compiler libraries statically. It imports only Windows system libraries. Leptonica uses its built-in BMP decoder. Optional image codecs, curl, libarchive, OpenMP, graphics, and training tools are disabled. The Tesseract build defines TESSERACT_DISABLE_DEBUG_FONTS for this configuration.
 
-This software is based in part on the work of the Independent JPEG Group.
+Tesseract, its trained data, Leptonica, LLVM, and the MinGW-w64 runtime retain their respective licenses in this directory.

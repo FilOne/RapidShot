@@ -11,6 +11,7 @@ internal sealed partial class EditorForm : Form, IThemeAware
     private readonly AppSettings settings;
     private readonly Label status, activeItem;
     private readonly Button undo, redo, copy, delete, customColor, recognizeText;
+    private readonly OcrResultPanel ocrResultPanel;
     private readonly ToolStripMenuItem save, upload;
     private readonly CaptureSplitButton capture;
     private readonly FloatingBar toolBar;
@@ -40,8 +41,9 @@ internal sealed partial class EditorForm : Form, IThemeAware
         Theme.Apply(this); Font = new Font("Segoe UI", 9.5f);
         Text = "RapidShot"; ClientSize = new(920, 580); MinimumSize = new(740, 480);
         KeyPreview = true;
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 4, ColumnCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
-        root.RowStyles.Add(new(SizeType.Percent, 100)); root.RowStyles.Add(new(SizeType.Absolute, 52)); root.RowStyles.Add(new(SizeType.Absolute, 56)); root.RowStyles.Add(new(SizeType.Absolute, 20));
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 5, ColumnCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
+        root.RowStyles.Add(new(SizeType.Percent, 100)); root.RowStyles.Add(new(SizeType.Absolute, 52)); root.RowStyles.Add(new(SizeType.Absolute, 56));
+        root.RowStyles.Add(new(SizeType.AutoSize)); root.RowStyles.Add(new(SizeType.Absolute, 20));
         root.ColumnStyles.Add(new(SizeType.Percent, 100));
         captureMenu.Renderer = new MinimalMenuRenderer(); captureMenu.ImageScalingSize = new Size(20, 20);
         save = new ToolStripMenuItem("Сохранить…") { ShortcutKeyDisplayString = "Ctrl+S", ImageScaling = ToolStripItemImageScaling.None }; save.Click += (_, _) => SaveAndFinish();
@@ -56,9 +58,9 @@ internal sealed partial class EditorForm : Form, IThemeAware
         capture.CopyRequested += CopyImage; capture.MenuRequested += ShowCaptureMenu;
         tips.SetToolTip(copy, "Захват — скопировать изображение в буфер · Ctrl+C");
         tips.SetToolTip(capture.MenuAction, "Сохранить снимок или загрузить на Yapx");
-        recognizeText = new IconButton(UiIcon.Ocr, "Распознать и скопировать текст") { Text = "OCR", ShowText = true, Width = 74 };
-        recognizeText.Click += async (_, _) => await CopyRecognizedTextAsync();
-        tips.SetToolTip(recognizeText, "OCR — распознать текст и скопировать в буфер");
+        recognizeText = new IconButton(UiIcon.Ocr, "Распознать текст") { Text = "OCR", ShowText = true, Width = 74 };
+        recognizeText.Click += async (_, _) => await RecognizeTextAsync();
+        tips.SetToolTip(recognizeText, "OCR — распознать и открыть редактор текста");
         toolBar.Controls.AddRange([capture, recognizeText, Separator()]);
         ToolDefinition[][] groups = [
             [new(EditorTool.Select, "↖", "Выбор / перенос", "V")],
@@ -170,11 +172,13 @@ internal sealed partial class EditorForm : Form, IThemeAware
         foreach (var button in new[] { applyCrop, resetCrop }) { button.AutoSize = false; button.Size = new(112, 32); button.Padding = Padding.Empty; button.Margin = new Padding(4, 2, 4, 2); }
         cropControls.Controls.AddRange([applyCrop, resetCrop]); parameterBar.Controls.Add(cropControls); root.Controls.Add(parameterBar, 0, 2);
         status = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, AutoEllipsis = true, Font = new Font("Segoe UI", 8), Padding = new Padding(10, 0, 4, 0), BackColor = Theme.Background, ForeColor = Theme.Muted };
-        root.Controls.Add(status); Controls.Add(root);
+        ocrResultPanel = new OcrResultPanel(CopyOcrText, HideOcrResult);
+        root.Controls.Add(ocrResultPanel, 0, 3);
+        root.Controls.Add(status, 0, 4); Controls.Add(root);
         canvas.HintChanged += text => status.Text = text; canvas.SelectionChanged += SyncStyle;
         canvas.ToolActivated += tool => { HighlightTool(tool); UpdatePropertyVisibility(); };
         canvas.CropStateChanged += () => { UpdatePropertyVisibility(); UpdateHistory(); };
-        document.Changed += () => { exported = false; UpdateHistory(); UpdatePropertyVisibility(); };
+        document.Changed += () => { exported = false; canvas.SetOcrHighlights([]); UpdateHistory(); UpdatePropertyVisibility(); };
         UpdateHistory(); SelectTool(EditorTool.Pen); FormClosing += ClosingEditor;
         void FitBars() { toolBar.MaximumSize = new Size(Math.Max(300, ClientSize.Width - 24), 46); parameterBar.MaximumSize = new Size(Math.Max(300, ClientSize.Width - 24), 50); }
         SizeChanged += (_, _) => { if (!isRegionCapture) FitBars(); }; FitBars();
@@ -415,6 +419,11 @@ internal sealed partial class EditorForm : Form, IThemeAware
             return true;
         }
         if (uploading != null) return base.ProcessCmdKey(ref msg, keyData);
+        if (ocrResultPanel.ContainsFocus)
+        {
+            if (keyData == Keys.Escape) { HideOcrResult(); return true; }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
         if (pinNumber.Focused)
         {
             if (keyData == (Keys.Control | Keys.S)) CommitPinNumber();

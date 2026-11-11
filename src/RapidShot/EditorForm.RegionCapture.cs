@@ -28,6 +28,9 @@ internal sealed partial class EditorForm
         }
         status.Parent = canvas; status.Dock = DockStyle.None; status.Visible = false;
         status.BackColor = Color.Transparent; status.Padding = new Padding(8, 0, 8, 0);
+        ocrResultPanel.Parent = canvas;
+        ocrResultPanel.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+        ocrResultPanel.Margin = Padding.Empty;
         closeRegion = new IconButton(UiIcon.Cancel, "Закрыть снимок");
         closeRegion.Click += (_, _) => Close(); toolBar.Controls.Add(closeRegion);
         tips.SetToolTip(closeRegion, "Закрыть снимок · Esc");
@@ -119,10 +122,14 @@ internal sealed partial class EditorForm
             var width = hasToolParameters ? Math.Max(toolBar.Width, parameterBar.Width) : toolBar.Width;
             List<Size> sizes = [toolBar.Size];
             if (hasToolParameters) sizes.Add(parameterBar.Size);
+            var ocrRow = sizes.Count;
+            if (ocrResultPanel.Visible)
+                sizes.Add(new Size(Math.Min(maxWidth, OcrResultPanel.PreferredWidth), ocrResultPanel.Height));
             sizes.Add(new Size(Math.Min(maxWidth, width), 22));
             var rows = RegionPanelPlacement.Place(selection, screen, sizes.ToArray());
             toolBar.Location = rows[0].Location;
             if (hasToolParameters) parameterBar.Location = rows[1].Location;
+            if (ocrResultPanel.Visible) ocrResultPanel.Bounds = rows[ocrRow];
             status.Bounds = rows[^1];
         }
         finally { positioningRegionBars = false; }
@@ -136,7 +143,13 @@ internal static class RegionPanelPlacement
         const int gap = 6, margin = 12;
         var totalHeight = rows.Sum(row => row.Height) + gap * (rows.Length - 1);
         var y = selection.Bottom + margin;
-        if (y + totalHeight > screen.Bottom - margin) y = selection.Top - margin - totalHeight;
+        if (y + totalHeight > screen.Bottom - margin)
+        {
+            var above = selection.Top - margin - totalHeight;
+            if (above >= screen.Top + margin) y = above;
+            else if (selection.Top - screen.Top > screen.Bottom - selection.Bottom) y = screen.Top + margin;
+            else y = screen.Bottom - margin - totalHeight;
+        }
         y = Math.Clamp(y, screen.Top + margin, Math.Max(screen.Top + margin, screen.Bottom - margin - totalHeight));
         var result = new Rectangle[rows.Length];
         for (var i = 0; i < rows.Length; i++)
