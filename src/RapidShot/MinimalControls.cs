@@ -111,14 +111,20 @@ internal static class UiGlyph
             case UiIcon.Ellipse: g.DrawEllipse(p, 3, 3, 14, 14); break;
             case UiIcon.Text: Lines(new(3, 5), new(3, 3), new(17, 3), new(17, 5)); g.DrawLine(p, 10, 3, 10, 17); g.DrawLine(p, 7, 17, 13, 17); break;
             case UiIcon.Ocr:
-                Lines(new(3, 7), new(3, 3), new(7, 3));
-                Lines(new(13, 3), new(17, 3), new(17, 7));
-                Lines(new(3, 13), new(3, 17), new(7, 17));
-                Lines(new(13, 17), new(17, 17), new(17, 13));
-                g.DrawLine(p, 7, 7, 13, 7);
-                g.DrawLine(p, 7, 10, 13, 10);
-                g.DrawLine(p, 7, 13, 11, 13);
+            {
+                Lines(new(14.3f, 18.1f), new(3, 18.1f), new(3, 2), new(11.5f, 2), new(15.5f, 6), new(15.5f, 8));
+                Lines(new(11.5f, 2), new(11.5f, 6), new(15.5f, 6));
+                var blue = Theme.IsDark ? Theme.Accent : Color.FromArgb(0, 104, 166);
+                var violet = Theme.IsDark ? Color.FromArgb(184, 166, 255) : Color.FromArgb(99, 74, 182);
+                if (color == Theme.Disabled) blue = violet = color;
+                using var tint = new LinearGradientBrush(new PointF(6, 8), new PointF(18, 18), blue, violet);
+                using var lens = new Pen(tint, 1.55f) { EndCap = LineCap.Round };
+                g.DrawEllipse(lens, 6, 7.6f, 9.1f, 9.1f);
+                g.DrawLine(lens, 13.8f, 15.4f, 17.8f, 18);
+                Lines(new(8.5f, 14.4f), new(10.55f, 9.8f), new(12.6f, 14.4f));
+                g.DrawLine(p, 9.25f, 13.05f, 11.85f, 13.05f);
                 break;
+            }
             case UiIcon.Blur:
                 for (var x = 3; x <= 15; x += 4) for (var y = 3; y <= 15; y += 4) { using var dot = new SolidBrush(Color.FromArgb((x + y) % 3 == 0 ? 100 : 210, color)); g.FillRectangle(dot, x, y, 2, 2); } break;
             case UiIcon.Magnifier: g.DrawEllipse(p, 3, 3, 10, 10); g.DrawLine(p, 12, 12, 17, 17); g.DrawLine(p, 6, 8, 10, 8); g.DrawLine(p, 8, 6, 8, 10); break;

@@ -1,8 +1,8 @@
 # RapidShot
 
-Компактный скриншотер для **Windows 10/11** с панелью редактирования под снимком. Текущая версия — **1.25.1**.
+Компактный скриншотер для **Windows 10/11** с панелью редактирования под снимком. Текущая версия — **1.25.2**.
 
-**[Скачать установщик 1.25.1 для Windows x64](https://github.com/FilOne/RapidShot/raw/refs/heads/main/releases/1.25.1/RapidShot-Setup-1.25.1-x64.exe)** · [Все релизы](releases/)
+**[Скачать установщик 1.25.2 для Windows x64](https://github.com/FilOne/RapidShot/raw/refs/heads/main/releases/1.25.2/RapidShot-Setup-1.25.2-x64.exe)** · [Все релизы](releases/)
 
 ## Возможности
 
