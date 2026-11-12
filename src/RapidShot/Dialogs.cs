@@ -9,12 +9,13 @@ internal sealed class SettingsDialog : Form
     private readonly TextBox folder;
     private readonly Label feedback;
     private readonly Func<AppSettings, string?> apply;
+    private CancellationTokenSource? updateCheck;
     public SettingsDialog(AppSettings current, Func<AppSettings, string?> apply, IReadOnlyList<CaptureDisplay>? displays = null)
     {
         Result = current; this.apply = apply;
-        Theme.Apply(this); Text = "RapidShot — настройки"; ClientSize = new(590, 565);
+        Theme.Apply(this); Text = "RapidShot — настройки"; ClientSize = new(590, 610);
         FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; MinimizeBox = false;
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 13 };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 14 };
         layout.Controls.Add(new Label { Text = "Быстрее, чем искать кнопку", AutoSize = true, Font = new Font("Segoe UI", 17, FontStyle.Bold), Margin = new Padding(0, 0, 0, 15) });
         layout.Controls.Add(Theme.Label("Горячая клавиша для снимка"));
         var modifiers = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
@@ -51,12 +52,78 @@ internal sealed class SettingsDialog : Form
         folderRow.Controls.Add(Theme.Button("Обзор…", (_, _) => { using var dialog = new FolderBrowserDialog { InitialDirectory = folder.Text }; if (dialog.ShowDialog(this) == DialogResult.OK) folder.Text = dialog.SelectedPath; }));
         layout.Controls.Add(folderRow);
         layout.Controls.Add(new Label { Text = "После запуска приложение находится в трее.\nДвойной щелчок по значку — новый снимок. Выход — через меню трея.", AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(4, 14, 4, 8) });
+        layout.Controls.Add(CreateUpdateControls());
         feedback = new Label { AutoSize = true, MaximumSize = new(530, 0), ForeColor = Theme.Error }; layout.Controls.Add(feedback);
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
         var save = Theme.Button("Сохранить", Save, true);
         var close = Theme.Button("Отмена", (_, _) => Close()); buttons.Controls.AddRange([save, close]); layout.Controls.Add(buttons);
         Controls.Add(layout); AcceptButton = save; CancelButton = close;
+        Disposed += (_, _) => updateCheck?.Cancel();
     }
+
+    private Control CreateUpdateControls()
+    {
+        var row = new TableLayoutPanel { AutoSize = true, ColumnCount = 3, RowCount = 1, Dock = DockStyle.Fill, Margin = Padding.Empty };
+        row.ColumnStyles.Add(new(SizeType.AutoSize));
+        row.ColumnStyles.Add(new(SizeType.Percent, 100));
+        row.ColumnStyles.Add(new(SizeType.AutoSize));
+
+        var check = Theme.Button("Проверить обновления");
+        var status = new Label
+        {
+            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true,
+            ForeColor = Theme.Muted, Text = $"Установлена версия {UpdateChecker.CurrentVersion}"
+        };
+        Uri? installer = null;
+        var download = Theme.Button("Скачать", (_, _) =>
+        {
+            if (installer == null) return;
+            try
+            {
+                using var browser = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(installer.AbsoluteUri) { UseShellExecute = true });
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                status.Text = "Не удалось открыть браузер.";
+            }
+        });
+        download.Visible = false;
+        check.Click += async (_, _) =>
+        {
+            if (updateCheck != null) return;
+            using var cancellation = new CancellationTokenSource();
+            updateCheck = cancellation;
+            check.Enabled = download.Visible = false;
+            installer = null;
+            status.Text = "Проверяем обновления…";
+            try
+            {
+                var latest = await UpdateChecker.Default.FindUpdateAsync(cancellation.Token);
+                if (IsDisposed) return;
+                status.Text = latest == null ? $"У вас последняя версия {UpdateChecker.CurrentVersion}" : $"Доступна версия {latest}";
+                if (latest != null)
+                {
+                    installer = UpdateChecker.InstallerUrl(latest);
+                    download.Visible = true;
+                }
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+            catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or OperationCanceledException)
+            {
+                if (!IsDisposed) status.Text = "Не удалось проверить обновления.";
+            }
+            finally
+            {
+                updateCheck = null;
+                if (!IsDisposed) check.Enabled = true;
+            }
+        };
+        row.Controls.Add(check, 0, 0);
+        row.Controls.Add(status, 1, 0);
+        row.Controls.Add(download, 2, 0);
+        return row;
+    }
+
     private uint Modifiers() => (ctrl.Checked ? 2u : 0) | (alt.Checked ? 1u : 0) | (shift.Checked ? 4u : 0) | (win.Checked ? 8u : 0);
     private void Save(object? sender, EventArgs e)
     {
