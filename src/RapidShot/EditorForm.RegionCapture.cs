@@ -28,9 +28,6 @@ internal sealed partial class EditorForm
         }
         status.Parent = canvas; status.Dock = DockStyle.None; status.Visible = false;
         status.BackColor = Color.Transparent; status.Padding = new Padding(8, 0, 8, 0);
-        ocrResultPanel.Parent = canvas;
-        ocrResultPanel.Anchor = AnchorStyles.Top | AnchorStyles.Left;
-        ocrResultPanel.Margin = Padding.Empty;
         closeRegion = new IconButton(UiIcon.Cancel, "Закрыть снимок");
         closeRegion.Click += (_, _) => Close(); toolBar.Controls.Add(closeRegion);
         tips.SetToolTip(closeRegion, "Закрыть снимок · Esc");
@@ -122,14 +119,10 @@ internal sealed partial class EditorForm
             var width = hasToolParameters ? Math.Max(toolBar.Width, parameterBar.Width) : toolBar.Width;
             List<Size> sizes = [toolBar.Size];
             if (hasToolParameters) sizes.Add(parameterBar.Size);
-            var ocrRow = sizes.Count;
-            if (ocrResultPanel.Visible)
-                sizes.Add(new Size(Math.Min(maxWidth, OcrResultPanel.PreferredWidth), ocrResultPanel.Height));
             sizes.Add(new Size(Math.Min(maxWidth, width), 22));
             var rows = RegionPanelPlacement.Place(selection, screen, sizes.ToArray());
             toolBar.Location = rows[0].Location;
             if (hasToolParameters) parameterBar.Location = rows[1].Location;
-            if (ocrResultPanel.Visible) ocrResultPanel.Bounds = rows[ocrRow];
             status.Bounds = rows[^1];
         }
         finally { positioningRegionBars = false; }

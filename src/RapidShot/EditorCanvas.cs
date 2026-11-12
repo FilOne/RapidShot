@@ -45,7 +45,6 @@ internal sealed partial class EditorCanvas : Control
     private bool dragging, erased;
     private float zoom = 1;
     private RectangleF imageBounds;
-    private IReadOnlyList<RectangleF> ocrHighlights = [];
     private InlineTextBox? textEditor;
     private Annotation? textOriginal, textDraft;
     private Font? textEditorFont;
@@ -54,7 +53,7 @@ internal sealed partial class EditorCanvas : Control
     internal void SetInputEnabled(bool enabled)
     {
         acceptsInput = enabled;
-        if (!enabled) { CancelGesture(false); Cursor = Cursors.Default; }
+        if (!enabled) { CloseOcrWordEditor(true); EndOcrSelection(); CancelGesture(false); Cursor = Cursors.Default; }
     }
 
     public EditorCanvas(ScreenshotDocument document, Func<Keys>? modifierState = null)
@@ -123,7 +122,7 @@ internal sealed partial class EditorCanvas : Control
     }
     protected override void OnResize(EventArgs e)
     {
-        base.OnResize(e); previewDirty = true; ClearTransformPreview(); UpdateViewLayout(); PositionTextEditor(); Invalidate();
+        base.OnResize(e); previewDirty = true; ClearTransformPreview(); UpdateViewLayout(); PositionTextEditor(); PositionOcrWordEditor(); Invalidate();
     }
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -155,18 +154,7 @@ internal sealed partial class EditorCanvas : Control
         g.SetClip(imageBounds, CombineMode.Intersect);
         g.TranslateTransform(imageBounds.X, imageBounds.Y); g.ScaleTransform(zoom, zoom); g.TranslateTransform(-Document.Crop.X, -Document.Crop.Y);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        if (!IsResizingCapture && ocrHighlights.Count != 0)
-        {
-            using var fill = new SolidBrush(Color.FromArgb(42, Theme.Accent));
-            using var border = new Pen(Theme.Accent, 1 / zoom);
-            foreach (var word in ocrHighlights)
-            {
-                var bounds = word;
-                bounds.Offset(Document.Crop.Location);
-                g.FillRectangle(fill, bounds);
-                g.DrawRectangle(border, bounds.X, bounds.Y, bounds.Width, bounds.Height);
-            }
-        }
+        DrawOcrHighlights(g);
         if (pending != null)
         {
             if (pending.Tool == EditorTool.Magnifier) DrawMagnifierDraft(g);
@@ -179,8 +167,11 @@ internal sealed partial class EditorCanvas : Control
         }
         g.Restore(state);
         g.Restore(viewportState);
-        if (!IsResizingCapture) DrawObjectSelection(g);
-        DrawCropOverlay(g);
+        if (!HasOcrResult)
+        {
+            if (!IsResizingCapture) DrawObjectSelection(g);
+            DrawCropOverlay(g);
+        }
         if (desktopCoordinates)
         {
             if (Tool != EditorTool.Crop) SelectionFrame.Draw(g, DisplayedCaptureBounds);
@@ -188,12 +179,6 @@ internal sealed partial class EditorCanvas : Control
         else TextRenderer.DrawText(g, $"{Document.Crop.Width} × {Document.Crop.Height} px   ·   {zoom:P0}", Font, new Point((int)imageBounds.X, (int)imageBounds.Bottom + 9), Theme.Muted);
     }
     private PointF ToImage(Point point) => new(Math.Clamp((point.X - imageBounds.X) / zoom + Document.Crop.X, Document.Crop.Left, Document.Crop.Right), Math.Clamp((point.Y - imageBounds.Y) / zoom + Document.Crop.Y, Document.Crop.Top, Document.Crop.Bottom));
-    internal void SetOcrHighlights(IReadOnlyList<RectangleF> words)
-    {
-        if (ocrHighlights.Count == 0 && words.Count == 0) return;
-        ocrHighlights = words;
-        Invalidate();
-    }
     private Annotation? Find(PointF point) => Document.Items.LastOrDefault(x => x.HitTest(point, 5 / zoom));
     protected override void OnMouseDown(MouseEventArgs e)
     {
@@ -201,6 +186,12 @@ internal sealed partial class EditorCanvas : Control
         if (!acceptsInput) return;
         Focus();
         if (e.Button != MouseButtons.Left) return;
+        if (HasOcrResult)
+        {
+            var word = FindOcrWord(e.Location);
+            if (word >= 0 || !StartCaptureResize(e)) BeginOcrSelection(e, word);
+            return;
+        }
         shiftConstraint = (readModifiers() & Keys.Shift) != 0;
         if (magnifierStage == MagnifierStage.Placement) { if (imageBounds.Contains(e.Location)) StartMagnifier(ToImage(e.Location)); return; }
         if (StartCaptureResize(e)) return;
@@ -311,7 +302,7 @@ internal sealed partial class EditorCanvas : Control
     }
     internal void RefreshTheme()
     {
-        BackColor = Theme.Background; PositionTextEditor(); Invalidate();
+        BackColor = Theme.Background; PositionTextEditor(); PositionOcrWordEditor(); Invalidate();
     }
     private void CancelText()
     {
@@ -347,6 +338,13 @@ internal sealed partial class EditorCanvas : Control
         base.OnMouseMove(e);
         if (!acceptsInput) return;
         if (IsResizingCapture) { MoveCaptureResize(e.Location); return; }
+        if (HasOcrResult)
+        {
+            if (selectingOcrText) { ExtendOcrSelection(e.Location); Cursor = Cursors.IBeam; }
+            else if (FindOcrWord(e.Location) >= 0) Cursor = Cursors.IBeam;
+            else Cursor = desktopCoordinates ? CropCursor(HitCropEdge(e.Location)) : Cursors.Default;
+            return;
+        }
         if (desktopCoordinates && Tool != EditorTool.Crop && !dragging && HitCropEdge(e.Location) is var edge && edge != CropEdge.None)
         { var edgeCursor = CropCursor(edge); if (Cursor != edgeCursor) Cursor = edgeCursor; return; }
         if (Tool == EditorTool.Crop) { MoveCropDrag(e); return; }
@@ -376,6 +374,11 @@ internal sealed partial class EditorCanvas : Control
         base.OnMouseUp(e);
         if (!acceptsInput) return;
         if (IsResizingCapture && e.Button == MouseButtons.Left) { MoveCaptureResize(e.Location); CommitCaptureResize(); return; }
+        if (HasOcrResult)
+        {
+            if (selectingOcrText && e.Button == MouseButtons.Left) { ExtendOcrSelection(e.Location); EndOcrSelection(); }
+            return;
+        }
         if (Tool == EditorTool.Crop) { EndCropDrag(e); return; }
         if (!dragging || e.Button != MouseButtons.Left) return;
         pointerPosition = ToImage(e.Location);
@@ -422,12 +425,13 @@ internal sealed partial class EditorCanvas : Control
     protected override void OnMouseCaptureChanged(EventArgs e)
     {
         base.OnMouseCaptureChanged(e);
+        if (!Capture) selectingOcrText = false;
         if (!Capture) CancelCaptureResize();
         if (!Capture && dragging) { FinishObjectTransform(); StopBlurFeedback(); CancelMagnifier(); dragging = false; cropDragEdge = CropEdge.None; pending = null; Invalidate(); }
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { blurHintTimer.Dispose(); CloseTextEditor(); CancelMagnifier(); Document.Changed -= Rebuild; preview?.Dispose(); desktopBackdrop?.Dispose(); ClearTransformPreview(); }
+        if (disposing) { blurHintTimer.Dispose(); CloseTextEditor(); CloseOcrWordEditor(false); CancelMagnifier(); Document.Changed -= Rebuild; preview?.Dispose(); desktopBackdrop?.Dispose(); ClearTransformPreview(); }
         base.Dispose(disposing);
     }
 }

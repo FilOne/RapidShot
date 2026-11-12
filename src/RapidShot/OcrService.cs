@@ -7,7 +7,30 @@ using System.Text;
 
 namespace RapidShot;
 
-internal sealed record OcrResult(string Text, IReadOnlyList<RectangleF> Words);
+internal sealed record OcrWord(string Text, RectangleF Bounds, bool StartsLine);
+
+internal sealed record OcrResult(OcrWord[] Words)
+{
+    internal string GetText(int first, int last)
+    {
+        var text = new StringBuilder();
+        var startsLine = false;
+        for (var i = first; i <= last; i++)
+        {
+            var word = Words[i];
+            startsLine |= word.StartsLine;
+            if (word.Text.Length == 0) continue;
+            if (text.Length != 0)
+            {
+                if (startsLine) text.AppendLine();
+                else text.Append(' ');
+            }
+            text.Append(word.Text);
+            startsLine = false;
+        }
+        return text.ToString();
+    }
+}
 
 internal static class OcrService
 {
@@ -95,8 +118,7 @@ internal static class OcrService
 
     private static OcrResult ParseResult(string tsv, Size imageSize, int scale)
     {
-        var text = new StringBuilder();
-        var words = new List<RectangleF>();
+        var words = new List<OcrWord>();
         var imageBounds = new RectangleF(PointF.Empty, imageSize);
         (string Page, string Block, string Paragraph, string Line)? previousLine = null;
         using var reader = new StringReader(tsv);
@@ -108,22 +130,19 @@ internal static class OcrService
             if (word.Length == 0) continue;
 
             var line = (fields[1], fields[2], fields[3], fields[4]);
-            if (previousLine == line) text.Append(' ');
-            else if (previousLine.HasValue) text.AppendLine();
-            text.Append(word);
-            previousLine = line;
-
+            var bounds = RectangleF.Empty;
             if (int.TryParse(fields[6], CultureInfo.InvariantCulture, out var x)
                 && int.TryParse(fields[7], CultureInfo.InvariantCulture, out var y)
                 && int.TryParse(fields[8], CultureInfo.InvariantCulture, out var width)
                 && int.TryParse(fields[9], CultureInfo.InvariantCulture, out var height))
             {
-                var bounds = new RectangleF((x - ImagePadding) / (float)scale, (y - ImagePadding) / (float)scale,
+                bounds = new RectangleF((x - ImagePadding) / (float)scale, (y - ImagePadding) / (float)scale,
                     width / (float)scale, height / (float)scale);
                 bounds.Intersect(imageBounds);
-                if (!bounds.IsEmpty) words.Add(bounds);
             }
+            words.Add(new OcrWord(word, bounds, previousLine != line));
+            previousLine = line;
         }
-        return new OcrResult(text.ToString(), words);
+        return new OcrResult(words.ToArray());
     }
 }
