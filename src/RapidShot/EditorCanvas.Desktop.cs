@@ -56,7 +56,7 @@ internal sealed partial class EditorCanvas
         captureResizeDraft = null; captureResizeEdge = CropEdge.None; Capture = false;
         var changed = Document.ResizeCaptureRegion(area);
         CropStateChanged?.Invoke(); Invalidate();
-        if (changed) HintChanged?.Invoke($"Область: {area.Width} × {area.Height} px · Ctrl+Z — вернуть размер");
+        if (changed) HintChanged?.Invoke(Strings.Format("CaptureSizeHint", area.Width, area.Height));
         return changed;
     }
     internal bool CancelCaptureResize()

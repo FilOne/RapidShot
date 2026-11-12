@@ -41,7 +41,7 @@ internal static class OcrService
         var directory = Path.Combine(AppContext.BaseDirectory, "ocr");
         var executable = Path.Combine(directory, "tesseract.exe");
         if (!File.Exists(executable))
-            throw new FileNotFoundException("Не найден модуль OCR. Переустановите RapidShot или восстановите папку ocr рядом с программой.");
+            throw new FileNotFoundException(UiText.Current["OcrEngineMissing"]);
         using var bitmap = new MemoryStream();
         var scale = (long)image.Width * image.Height <= 1_000_000 && Math.Max(image.Width, image.Height) <= 4000 ? 2 : 1;
         using (var prepared = new Bitmap(image.Width * scale + ImagePadding * 2, image.Height * scale + ImagePadding * 2, PixelFormat.Format24bppRgb))
@@ -72,7 +72,7 @@ internal static class OcrService
         foreach (var argument in new[] { "stdin", "stdout", "--tessdata-dir", "tessdata", "-l", "rus+eng", "--oem", "1", "--dpi", scale == 2 ? "300" : "150", "-c", "tessedit_create_tsv=1" })
             startInfo.ArgumentList.Add(argument);
 
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Не удалось запустить модуль OCR.");
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException(UiText.Current["OcrEngineStartFailed"]);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
         using var stop = timeout.Token.Register(() =>
@@ -100,15 +100,15 @@ internal static class OcrService
             var diagnostics = await errors.ConfigureAwait(false);
             if (process.ExitCode != 0)
                 throw new InvalidOperationException(string.IsNullOrWhiteSpace(diagnostics)
-                    ? "Модуль OCR завершился с ошибкой."
+                    ? UiText.Current["OcrEngineFailed"]
                     : diagnostics.Trim());
             if (inputError != null)
-                throw new IOException("Не удалось передать снимок в модуль OCR.", inputError);
+                throw new IOException(UiText.Current["OcrSendImageFailed"], inputError);
             return ParseResult(await output.ConfigureAwait(false), image.Size, scale);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new TimeoutException("Распознавание заняло больше 30 секунд. Попробуйте выбрать меньшую область.");
+            throw new TimeoutException(UiText.Current["OcrTimeout"]);
         }
         finally
         {

@@ -48,7 +48,7 @@ internal sealed partial class EditorCanvas
         cropDraft ??= Document.Crop;
         if (e.Clicks > 1 && CropScreenBounds.Contains(e.Location)) { CommitCrop(); return; }
         cropDragEdge = HitCropEdge(e.Location);
-        if (cropDragEdge == CropEdge.None) { HintChanged?.Invoke("Потяните край или угол снимка. Enter — обрезать, Esc — сбросить."); return; }
+        if (cropDragEdge == CropEdge.None) { HintChanged?.Invoke(Strings["CropHint"]); return; }
         cropDragStart = cropDraft.Value; anchor = ToImage(e.Location); dragging = true; Capture = true;
         Cursor = CropCursor(cropDragEdge);
     }
@@ -64,7 +64,7 @@ internal sealed partial class EditorCanvas
         var bottom = (cropDragEdge & CropEdge.Bottom) != 0 ? Math.Clamp(r.Bottom + dy, r.Top + 2, bounds.Bottom) : r.Bottom;
         cropDraft = RectangleF.FromLTRB(left, top, right, bottom);
         CropStateChanged?.Invoke();
-        HintChanged?.Invoke($"Обрезка: {(int)Math.Round(right - left)} × {(int)Math.Round(bottom - top)} px · Enter — применить · Esc — сбросить");
+        HintChanged?.Invoke(Strings.Format("CropSizeHint", (int)Math.Round(right - left), (int)Math.Round(bottom - top)));
         Invalidate();
     }
     private void EndCropDrag(MouseEventArgs e)
@@ -80,7 +80,7 @@ internal sealed partial class EditorCanvas
         var changed = Document.CropTo(crop);
         cropDraft = Tool == EditorTool.Crop ? Document.Crop : null;
         CropStateChanged?.Invoke(); Invalidate();
-        if (changed) HintChanged?.Invoke($"Обрезано до {Document.Crop.Width} × {Document.Crop.Height} px. Ctrl+Z — вернуть размер.");
+        if (changed) HintChanged?.Invoke(Strings.Format("CroppedSize", Document.Crop.Width, Document.Crop.Height));
         return changed;
     }
     public void CancelCrop()
@@ -88,7 +88,7 @@ internal sealed partial class EditorCanvas
         cropDraft = Tool == EditorTool.Crop ? Document.Crop : null;
         cropDragEdge = CropEdge.None; dragging = false; Capture = false;
         CropStateChanged?.Invoke(); Invalidate();
-        if (Tool == EditorTool.Crop) HintChanged?.Invoke("Рамка сброшена. Потяните край или угол снимка. Enter — обрезать.");
+        if (Tool == EditorTool.Crop) HintChanged?.Invoke(Strings["CropResetHint"]);
     }
     public void CommitEdits() { CommitText(); CloseOcrWordEditor(true); FinishObjectTransform(); CommitCaptureResize(); CommitCrop(); CancelMagnifier(); }
     private void DrawCropOverlay(Graphics g)

@@ -9,13 +9,13 @@ internal sealed class CaptureSplitButton : UserControl
     internal event Action? CopyRequested;
     internal event Action? MenuRequested;
 
-    public CaptureSplitButton()
+    public CaptureSplitButton(UiText strings)
     {
         AutoScaleMode = AutoScaleMode.None; Size = new(124, 34);
         Margin = new Padding(1, 0, 1, 0); BackColor = Theme.Panel; TabStop = false;
-        AccessibleName = "Захват"; AccessibleRole = AccessibleRole.Grouping;
-        PrimaryAction = new Segment(this, false) { Text = "Захват", AccessibleName = "Захват — скопировать в буфер" };
-        MenuAction = new Segment(this, true) { AccessibleName = "Другие действия со снимком" };
+        AccessibleName = strings["Capture"]; AccessibleRole = AccessibleRole.Grouping;
+        PrimaryAction = new Segment(this, false) { Text = strings["Capture"], AccessibleName = strings["CaptureCopy"] };
+        MenuAction = new Segment(this, true) { AccessibleName = strings["CaptureActions"] };
         PrimaryAction.Click += (_, _) => CopyRequested?.Invoke();
         MenuAction.Click += (_, _) => MenuRequested?.Invoke();
         Controls.AddRange([PrimaryAction, MenuAction]); ArrangeParts();

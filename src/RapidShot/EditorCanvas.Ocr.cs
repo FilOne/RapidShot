@@ -4,7 +4,7 @@ namespace RapidShot;
 
 internal sealed partial class EditorCanvas
 {
-    internal const string OcrSelectionHint = "Выделите слова на снимке · Ctrl+C — копировать · Двойной щелчок — исправить";
+    internal string OcrSelectionHint => Strings["OcrSelectionHint"];
 
     private OcrResult? ocrResult;
     private int ocrAnchor = -1, ocrEnd = -1;
@@ -114,7 +114,7 @@ internal sealed partial class EditorCanvas
         {
             BorderStyle = BorderStyle.FixedSingle,
             Text = ocrResult.Words[ocrEnd].Text,
-            AccessibleName = "Исправление распознанного слова"
+            AccessibleName = Strings["OcrEditWord"]
         };
         ocrWordEditor.AcceptEdit += () => FinishOcrWordEdit(true);
         ocrWordEditor.CancelEdit += () => FinishOcrWordEdit(false);
@@ -125,7 +125,7 @@ internal sealed partial class EditorCanvas
         ocrWordEditor.BringToFront();
         ocrWordEditor.Focus();
         ocrWordEditor.SelectAll();
-        HintChanged?.Invoke("Enter — сохранить правку · Esc — отменить");
+        HintChanged?.Invoke(Strings["OcrEditHint"]);
     }
 
     private void PositionOcrWordEditor()

@@ -15,7 +15,7 @@ internal sealed partial class EditorCanvas
         var bounds = pending.Bounds; var size = new Size((int)bounds.Width, (int)bounds.Height);
         if (lastBlurSize == size) return;
         lastBlurSize = size;
-        HintChanged?.Invoke($"Выделено: {size.Width} × {size.Height} px");
+        HintChanged?.Invoke(Strings.Format("SelectionSize", size.Width, size.Height));
     }
     private void StopBlurFeedback(bool publish = false)
     {

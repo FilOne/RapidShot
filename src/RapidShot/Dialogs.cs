@@ -5,19 +5,21 @@ internal sealed class SettingsDialog : Form
     public AppSettings Result { get; private set; }
     private readonly TextBox shortcut;
     private readonly CheckBox ctrl, alt, shift, win;
-    private readonly ComboBox key, mode, appearance;
+    private readonly ComboBox key, mode, appearance, language;
     private readonly TextBox folder;
     private readonly Label feedback;
     private readonly Func<AppSettings, string?> apply;
+    private readonly UiText Strings;
     private CancellationTokenSource? updateCheck;
     public SettingsDialog(AppSettings current, Func<AppSettings, string?> apply, IReadOnlyList<CaptureDisplay>? displays = null)
     {
         Result = current; this.apply = apply;
-        Theme.Apply(this); Text = "RapidShot — настройки"; ClientSize = new(590, 610);
+        Strings = UiText.For(current.Language);
+        Theme.Apply(this); Text = Strings["SettingsTitle"]; ClientSize = new(590, 610);
         FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; MinimizeBox = false;
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 14 };
-        layout.Controls.Add(new Label { Text = "Быстрее, чем искать кнопку", AutoSize = true, Font = new Font("Segoe UI", 17, FontStyle.Bold), Margin = new Padding(0, 0, 0, 15) });
-        layout.Controls.Add(Theme.Label("Горячая клавиша для снимка"));
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 13 };
+        layout.Controls.Add(new Label { Text = Strings["SettingsHeading"], AutoSize = true, Font = new Font("Segoe UI", 17, FontStyle.Bold), Margin = new Padding(0, 0, 0, 15) });
+        layout.Controls.Add(Theme.Label(Strings["CaptureHotkey"]));
         var modifiers = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
         CheckBox Check(string text, uint flag) => new() { Text = text, Checked = (current.Modifiers & flag) != 0, AutoSize = true, Margin = new Padding(4, 4, 16, 4) };
         ctrl = Check("Ctrl", 2); alt = Check("Alt", 1); shift = Check("Shift", 4); win = Check("Win", 8);
@@ -35,28 +37,37 @@ internal sealed class SettingsDialog : Form
         void RefreshLabel(object? sender, EventArgs e) => shortcut.Text = AppSettings.FormatHotkey(Modifiers(), (Keys)(key.SelectedItem ?? Keys.S));
         foreach (var check in new[] { ctrl, alt, shift, win }) check.CheckedChanged += RefreshLabel;
         key.SelectedIndexChanged += RefreshLabel;
-        layout.Controls.Add(Theme.Label("Что снимать по горячей клавише"));
+        layout.Controls.Add(Theme.Label(Strings["CaptureTarget"]));
         mode = Theme.ComboBox(); mode.Dock = DockStyle.Fill;
-        var choices = CaptureTargets.Choices(displays ?? CaptureTargets.GetDisplays(), current.CaptureDeviceName);
+        var choices = CaptureTargets.Choices(displays ?? CaptureTargets.GetDisplays(), current.CaptureDeviceName, Strings);
         mode.Items.AddRange(choices);
         mode.SelectedItem = choices.First(x => x.Region == current.CaptureRegion && (x.Region || string.Equals(x.DeviceName ?? "", current.CaptureDeviceName ?? "", StringComparison.OrdinalIgnoreCase)));
-        mode.AccessibleName = "Экран или область для горячей клавиши"; layout.Controls.Add(mode);
-        layout.Controls.Add(Theme.Label("Оформление интерфейса"));
-        appearance = Theme.ComboBox(); appearance.Dock = DockStyle.Fill; appearance.AccessibleName = "Тема оформления";
-        appearance.Items.AddRange(["Как в системе", "Темный", "Светлый"]); appearance.SelectedIndex = (int)current.ThemeMode; layout.Controls.Add(appearance);
-        layout.Controls.Add(Theme.Label("Папка сохранения по умолчанию"));
+        mode.AccessibleName = Strings["CaptureTargetName"]; layout.Controls.Add(mode);
+        var interfaceRow = new TableLayoutPanel { AutoSize = true, ColumnCount = 2, RowCount = 2, Dock = DockStyle.Fill, Margin = Padding.Empty };
+        interfaceRow.ColumnStyles.Add(new(SizeType.Percent, 50));
+        interfaceRow.ColumnStyles.Add(new(SizeType.Percent, 50));
+        interfaceRow.Controls.Add(Theme.Label(Strings["Appearance"]), 0, 0);
+        interfaceRow.Controls.Add(Theme.Label(Strings["InterfaceLanguage"]), 1, 0);
+        appearance = Theme.ComboBox(); appearance.Dock = DockStyle.Fill; appearance.AccessibleName = Strings["ThemeName"];
+        appearance.Items.AddRange([Strings["SystemTheme"], Strings["DarkTheme"], Strings["LightTheme"]]); appearance.SelectedIndex = (int)current.ThemeMode;
+        language = Theme.ComboBox(); language.Dock = DockStyle.Fill; language.AccessibleName = Strings["InterfaceLanguage"];
+        language.Items.AddRange(["Русский", "English", "简体中文"]); language.SelectedIndex = (int)current.Language;
+        interfaceRow.Controls.Add(appearance, 0, 1);
+        interfaceRow.Controls.Add(language, 1, 1);
+        layout.Controls.Add(interfaceRow);
+        layout.Controls.Add(Theme.Label(Strings["DefaultSaveFolder"]));
         var folderRow = new TableLayoutPanel { AutoSize = true, ColumnCount = 2, Dock = DockStyle.Fill };
         folderRow.ColumnStyles.Add(new(SizeType.Percent, 100)); folderRow.ColumnStyles.Add(new(SizeType.AutoSize));
         folder = new TextBox { Text = current.SaveDirectory, Dock = DockStyle.Fill, Margin = new Padding(4, 10, 4, 4), BackColor = Theme.Raised, ForeColor = Theme.Foreground };
         folderRow.Controls.Add(folder);
-        folderRow.Controls.Add(Theme.Button("Обзор…", (_, _) => { using var dialog = new FolderBrowserDialog { InitialDirectory = folder.Text }; if (dialog.ShowDialog(this) == DialogResult.OK) folder.Text = dialog.SelectedPath; }));
+        folderRow.Controls.Add(Theme.Button(Strings["Browse"], (_, _) => { using var dialog = new FolderBrowserDialog { InitialDirectory = folder.Text }; if (dialog.ShowDialog(this) == DialogResult.OK) folder.Text = dialog.SelectedPath; }));
         layout.Controls.Add(folderRow);
-        layout.Controls.Add(new Label { Text = "После запуска приложение находится в трее.\nДвойной щелчок по значку — новый снимок. Выход — через меню трея.", AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(4, 14, 4, 8) });
+        layout.Controls.Add(new Label { Text = Strings["TrayHelp"], AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(4, 14, 4, 8) });
         layout.Controls.Add(CreateUpdateControls());
         feedback = new Label { AutoSize = true, MaximumSize = new(530, 0), ForeColor = Theme.Error }; layout.Controls.Add(feedback);
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
-        var save = Theme.Button("Сохранить", Save, true);
-        var close = Theme.Button("Отмена", (_, _) => Close()); buttons.Controls.AddRange([save, close]); layout.Controls.Add(buttons);
+        var save = Theme.Button(Strings["Save"], Save, true);
+        var close = Theme.Button(Strings["Cancel"], (_, _) => Close()); buttons.Controls.AddRange([save, close]); layout.Controls.Add(buttons);
         Controls.Add(layout); AcceptButton = save; CancelButton = close;
         Disposed += (_, _) => updateCheck?.Cancel();
     }
@@ -68,14 +79,14 @@ internal sealed class SettingsDialog : Form
         row.ColumnStyles.Add(new(SizeType.Percent, 100));
         row.ColumnStyles.Add(new(SizeType.AutoSize));
 
-        var check = Theme.Button("Проверить обновления");
+        var check = Theme.Button(Strings["CheckForUpdates"]);
         var status = new Label
         {
             Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true,
-            ForeColor = Theme.Muted, Text = $"Установлена версия {UpdateChecker.CurrentVersion}"
+            ForeColor = Theme.Muted, Text = Strings.Format("InstalledVersion", UpdateChecker.CurrentVersion)
         };
         Uri? installer = null;
-        var download = Theme.Button("Скачать", (_, _) =>
+        var download = Theme.Button(Strings["Download"], (_, _) =>
         {
             if (installer == null) return;
             try
@@ -84,7 +95,7 @@ internal sealed class SettingsDialog : Form
             }
             catch (System.ComponentModel.Win32Exception)
             {
-                status.Text = "Не удалось открыть браузер.";
+                status.Text = Strings["BrowserError"];
             }
         });
         download.Visible = false;
@@ -95,12 +106,12 @@ internal sealed class SettingsDialog : Form
             updateCheck = cancellation;
             check.Enabled = download.Visible = false;
             installer = null;
-            status.Text = "Проверяем обновления…";
+            status.Text = Strings["CheckingForUpdates"];
             try
             {
                 var latest = await UpdateChecker.Default.FindUpdateAsync(cancellation.Token);
                 if (IsDisposed) return;
-                status.Text = latest == null ? $"У вас последняя версия {UpdateChecker.CurrentVersion}" : $"Доступна версия {latest}";
+                status.Text = latest == null ? Strings.Format("UpToDate", UpdateChecker.CurrentVersion) : Strings.Format("UpdateAvailable", latest);
                 if (latest != null)
                 {
                     installer = UpdateChecker.InstallerUrl(latest);
@@ -110,7 +121,7 @@ internal sealed class SettingsDialog : Form
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
             catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or OperationCanceledException)
             {
-                if (!IsDisposed) status.Text = "Не удалось проверить обновления.";
+                if (!IsDisposed) status.Text = Strings["UpdateCheckFailed"];
             }
             finally
             {
@@ -131,7 +142,12 @@ internal sealed class SettingsDialog : Form
         {
             var path = Path.GetFullPath(Environment.ExpandEnvironmentVariables(folder.Text.Trim()));
             var choice = (CaptureChoice)mode.SelectedItem!;
-            var settings = new AppSettings { Modifiers = Modifiers(), Key = (int)(Keys)key.SelectedItem!, CaptureRegion = choice.Region, CaptureDeviceName = choice.DeviceName, SaveDirectory = path, ThemeMode = (AppTheme)appearance.SelectedIndex };
+            var settings = new AppSettings
+            {
+                Modifiers = Modifiers(), Key = (int)(Keys)key.SelectedItem!, CaptureRegion = choice.Region,
+                CaptureDeviceName = choice.DeviceName, SaveDirectory = path, ThemeMode = (AppTheme)appearance.SelectedIndex,
+                Language = (AppLanguage)language.SelectedIndex
+            };
             var error = apply(settings);
             if (error != null) { feedback.Text = error; return; }
             Result = settings; DialogResult = DialogResult.OK; Close();
@@ -142,18 +158,18 @@ internal sealed class SettingsDialog : Form
 
 internal sealed class UploadResultDialog : Form
 {
-    public UploadResultDialog(UploadResult result)
+    public UploadResultDialog(UploadResult result, UiText strings)
     {
-        Theme.Apply(this); Text = "RapidShot — загружено на Yapx"; ClientSize = new(600, 240);
+        Theme.Apply(this); Text = strings["UploadResultTitle"]; ClientSize = new(600, 240);
         FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; MinimizeBox = false;
         var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(22) };
-        layout.Controls.Add(new Label { Text = "Ссылка готова", Font = new Font("Segoe UI", 20, FontStyle.Bold), AutoSize = true });
-        layout.Controls.Add(Theme.Label("Страница изображения", true));
+        layout.Controls.Add(new Label { Text = strings["LinkReady"], Font = new Font("Segoe UI", 20, FontStyle.Bold), AutoSize = true });
+        layout.Controls.Add(Theme.Label(strings["ImagePage"], true));
         layout.Controls.Add(new TextBox { Text = result.Url, ReadOnly = true, Width = 540, BackColor = Theme.Raised, ForeColor = Theme.Foreground });
         var actions = new FlowLayoutPanel { AutoSize = true };
-        actions.Controls.Add(Theme.Button("Копировать ссылку", (_, _) => { try { Clipboard.SetText(result.Url); } catch (Exception ex) { MessageBox.Show(this, ex.Message, "Буфер обмена"); } }, true));
-        actions.Controls.Add(Theme.Button("Открыть в браузере", (_, _) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(result.Url) { UseShellExecute = true })));
+        actions.Controls.Add(Theme.Button(strings["CopyLink"], (_, _) => { try { Clipboard.SetText(result.Url); } catch (Exception ex) { MessageBox.Show(this, ex.Message, strings["Clipboard"]); } }, true));
+        actions.Controls.Add(Theme.Button(strings["OpenInBrowser"], (_, _) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(result.Url) { UseShellExecute = true })));
         layout.Controls.Add(actions);
-        var close = Theme.Button("Готово", (_, _) => Close()); layout.Controls.Add(close); CancelButton = close; Controls.Add(layout);
+        var close = Theme.Button(strings["Done"], (_, _) => Close()); layout.Controls.Add(close); CancelButton = close; Controls.Add(layout);
     }
 }

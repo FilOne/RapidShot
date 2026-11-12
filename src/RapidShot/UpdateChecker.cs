@@ -14,7 +14,7 @@ internal sealed class UpdateChecker(HttpClient http)
     {
         var value = await http.GetStringAsync(VersionUrl, cancellationToken).ConfigureAwait(false);
         if (!Version.TryParse(value.Trim(), out var latest) || latest.Build < 0 || latest.Revision >= 0)
-            throw new InvalidDataException("Не удалось прочитать номер последней версии RapidShot.");
+            throw new InvalidDataException(UiText.Current["UpdateVersionReadFailed"]);
         return latest > CurrentVersion ? latest : null;
     }
 

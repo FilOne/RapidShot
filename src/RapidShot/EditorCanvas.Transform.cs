@@ -87,7 +87,7 @@ internal sealed partial class EditorCanvas
         ClearTransformPreview(); anchor = point; last = point; dragging = true; Capture = true;
         pointerPosition = point;
         Cursor = ObjectCursor(handle);
-        HintChanged?.Invoke(handle == ObjectHandle.Move ? "Перемещение объекта · Ctrl+Z — отменить." : "Потяните маркер · Shift — равномерный размер · Ctrl+Z — отменить.");
+        HintChanged?.Invoke(handle == ObjectHandle.Move ? Strings["MovingHint"] : Strings["ResizeHint"]);
         if (shiftConstraint && handle is not (ObjectHandle.Move or ObjectHandle.Curve)) MoveObjectTransform(point, true);
     }
     private void MoveObjectTransform(PointF point, bool force = false)

@@ -28,9 +28,9 @@ internal sealed partial class EditorForm
         }
         status.Parent = canvas; status.Dock = DockStyle.None; status.Visible = false;
         status.BackColor = Color.Transparent; status.Padding = new Padding(8, 0, 8, 0);
-        closeRegion = new IconButton(UiIcon.Cancel, "Закрыть снимок");
+        closeRegion = new IconButton(UiIcon.Cancel, Strings["CloseCapture"]);
         closeRegion.Click += (_, _) => Close(); toolBar.Controls.Add(closeRegion);
-        tips.SetToolTip(closeRegion, "Закрыть снимок · Esc");
+        tips.SetToolTip(closeRegion, Strings["CloseCaptureHint"]);
         canvas.CropStateChanged += PositionRegionBars;
         document.Changed += PositionRegionBars;
         SizeChanged += (_, _) => PositionRegionBars();
@@ -90,7 +90,7 @@ internal sealed partial class EditorForm
         if (!regionSelection.IsEmpty) SelectionFrame.Draw(g, regionSelection);
         NativeMethods.GetCursorPos(out var cursor);
         var screen = Screen.FromPoint(cursor).Bounds; screen.Offset(-captureDesktopBounds.X, -captureDesktopBounds.Y);
-        var help = regionSelection.Width > 0 ? $"{regionSelection.Width} × {regionSelection.Height} px   ·   Отпустите мышь   ·   Esc — отмена" : "Выделите область мышью   ·   Esc — отмена";
+        var help = regionSelection.Width > 0 ? Strings.Format("CaptureDragHint", regionSelection.Width, regionSelection.Height) : Strings["CaptureStartHint"];
         using var font = new Font("Segoe UI", 11);
         var size = TextRenderer.MeasureText(help, font);
         var box = new Rectangle(screen.X + (screen.Width - size.Width) / 2 - 16, screen.Y + 24, size.Width + 32, 40);

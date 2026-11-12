@@ -18,7 +18,7 @@ internal sealed class AutostartService(string registryPath = AutostartService.Ru
     {
         if (enabled)
         {
-            var command = CreateCommand(Environment.ProcessPath ?? throw new IOException("Не удалось определить путь к RapidShot."));
+            var command = CreateCommand(Environment.ProcessPath ?? throw new IOException(UiText.Current["AutostartPathMissing"]));
             using var key = Registry.CurrentUser.CreateSubKey(registryPath, writable: true);
             key.SetValue(EntryName, command, RegistryValueKind.String);
         }
@@ -31,9 +31,9 @@ internal sealed class AutostartService(string registryPath = AutostartService.Ru
     internal static string CreateCommand(string executable)
     {
         if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
-            throw new IOException("Для настройки автозапуска запустите RapidShot.exe из установленной или переносимой сборки.");
+            throw new IOException(UiText.Current["AutostartRequiresExe"]);
         var command = $"\"{executable}\" --autostart";
-        if (command.Length > 260) throw new IOException("Путь к приложению слишком длинный для автозапуска. Переместите RapidShot в папку с более коротким путём.");
+        if (command.Length > 260) throw new IOException(UiText.Current["AutostartPathTooLong"]);
         return command;
     }
 }

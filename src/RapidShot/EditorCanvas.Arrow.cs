@@ -53,7 +53,7 @@ internal sealed partial class EditorCanvas
         }
         else return false;
         SelectionChanged?.Invoke();
-        HintChanged?.Invoke("Потяните точку для изгиба. Двойной щелчок по линии добавляет точку; «−» снизу удаляет выбранную.");
+        HintChanged?.Invoke(Strings["ArrowEditHint"]);
         return true;
     }
     private void MoveCurvePoint(Annotation item, Annotation original, float dx, float dy)
@@ -79,7 +79,7 @@ internal sealed partial class EditorCanvas
         var index = Enumerable.Range(0, segments.Count).MaxBy(i => ArrowGeometry.Distance(segments[i].Start, segments[i].End));
         Document.BeginChange(); arrow.CurvePoints.Insert(index, segments[index].At(.5f));
         activeCurvePoint = index; curveOwner = arrow.Id; Document.NotifyChanged(); SelectionChanged?.Invoke();
-        HintChanged?.Invoke("Точка добавлена. Потяните её мышью, чтобы изогнуть стрелку.");
+        HintChanged?.Invoke(Strings["ArrowPointAdded"]);
     }
     public void RemoveCurvePoint()
     {

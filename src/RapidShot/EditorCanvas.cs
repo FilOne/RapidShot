@@ -6,6 +6,8 @@ internal sealed partial class EditorCanvas : Control
 {
     public ScreenshotDocument Document { get; }
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    internal UiText Strings { get; init; } = UiText.Current;
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public EditorTool Tool
     {
         get => tool;
@@ -206,7 +208,7 @@ internal sealed partial class EditorCanvas : Control
         if (Tool == EditorTool.Pin)
         {
             Selected = Document.AddPin(p, Ink, PinSize); SelectionChanged?.Invoke(); Invalidate();
-            HintChanged?.Invoke($"Пин {Selected.PinNumber} добавлен. Следующий: {Document.NextPinNumber}. V — перенос."); return;
+            HintChanged?.Invoke(Strings.Format("PinAddedHint", Selected.PinNumber, Document.NextPinNumber)); return;
         }
         if (Tool == EditorTool.Text)
         {
@@ -244,7 +246,7 @@ internal sealed partial class EditorCanvas : Control
         textOriginal = original;
         textDraft = original?.Clone() ?? new Annotation { Tool = EditorTool.Text, Start = point, FontSize = TextSize, Color = Ink, Width = StrokeWidth };
         Selected = textDraft;
-        textEditor = new InlineTextBox { Multiline = true, AcceptsReturn = true, WordWrap = false, BorderStyle = BorderStyle.FixedSingle, BackColor = Color.White, ForeColor = textDraft.Color, Text = textDraft.Text, AccessibleName = "Текст на скриншоте" };
+        textEditor = new InlineTextBox { Multiline = true, AcceptsReturn = true, WordWrap = false, BorderStyle = BorderStyle.FixedSingle, BackColor = Color.White, ForeColor = textDraft.Color, Text = textDraft.Text, AccessibleName = Strings["ScreenshotText"] };
         textEditor.TextChanged += (_, _) =>
         {
             if (textDraft == null || textEditor == null) return;
@@ -255,7 +257,7 @@ internal sealed partial class EditorCanvas : Control
         Controls.Add(textEditor); Rebuild(); SelectionChanged?.Invoke();
         textEditor.BringToFront(); textEditor.Focus();
         if (original != null) textEditor.SelectAll();
-        HintChanged?.Invoke("Enter — готово · Shift+Enter — новая строка · Esc — отмена");
+        HintChanged?.Invoke(Strings["TextEditKeys"]);
     }
     private void PositionTextEditor()
     {
@@ -272,7 +274,7 @@ internal sealed partial class EditorCanvas : Control
         var x = (int)Math.Round(imageBounds.X + (textDraft.Start.X - Document.Crop.X) * zoom);
         var y = (int)Math.Round(imageBounds.Y + (textDraft.Start.Y - Document.Crop.Y) * zoom);
         x = Math.Clamp(x, 0, Math.Max(0, ClientSize.Width - 20)); y = Math.Clamp(y, 0, Math.Max(0, ClientSize.Height - 20));
-        var size = TextRenderer.MeasureText(textEditor.Text.Length > 0 ? textEditor.Text : "Текст", textEditor.Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+        var size = TextRenderer.MeasureText(textEditor.Text.Length > 0 ? textEditor.Text : Strings["TextTool"], textEditor.Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
         textEditor.Bounds = new Rectangle(x, y, Math.Min(Math.Max(120, size.Width + 14), Math.Max(20, ClientSize.Width - x - 2)), Math.Min(Math.Max(textEditor.Font.Height + 10, size.Height + 10), Math.Max(20, ClientSize.Height - y - 2)));
     }
     public void CommitText()
@@ -298,7 +300,7 @@ internal sealed partial class EditorCanvas : Control
             }
         }
         Rebuild(); SelectionChanged?.Invoke();
-        HintChanged?.Invoke("Текст: щелчок инструментом T или двойной щелчок инструментом выбора — редактировать.");
+        HintChanged?.Invoke(Strings["EditTextHint"]);
     }
     internal void RefreshTheme()
     {
@@ -308,7 +310,7 @@ internal sealed partial class EditorCanvas : Control
     {
         if (textEditor == null) return;
         var original = textOriginal; CloseTextEditor(); Selected = original;
-        Rebuild(); SelectionChanged?.Invoke(); HintChanged?.Invoke("Изменение текста отменено.");
+        Rebuild(); SelectionChanged?.Invoke(); HintChanged?.Invoke(Strings["TextEditCanceled"]);
     }
     private void CloseTextEditor()
     {
@@ -405,7 +407,7 @@ internal sealed partial class EditorCanvas : Control
                 else Document.Add(Selected);
                 lastPenStrokeAt = item.Tool == EditorTool.Pen && RecognizeShapes && recognized == null ? Environment.TickCount64 : 0;
                 SelectionChanged?.Invoke();
-                if (recognized != null) HintChanged?.Invoke(recognized.Item.Tool == EditorTool.Arrow ? "Рисунок преобразован в стрелку. Параметры и концы можно редактировать." : "Замкнутый контур выровнен в круг или эллипс. Размер можно менять за маркеры.");
+                if (recognized != null) HintChanged?.Invoke(recognized.Item.Tool == EditorTool.Arrow ? Strings["ArrowRecognized"] : Strings["EllipseRecognized"]);
             }
         }
         Invalidate();

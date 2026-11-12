@@ -19,7 +19,7 @@ internal sealed partial class EditorCanvas
         if (Selected?.Tool != EditorTool.Magnifier) return;
         editMagnifierSource = !editMagnifierSource;
         SelectionChanged?.Invoke(); Invalidate();
-        HintChanged?.Invoke(editMagnifierSource ? "Источник: перетащите рамку или её маркеры. «Готово» вернёт к увеличенному фрагменту." : "Перетащите увеличенный фрагмент или потяните маркеры. Масштаб и обводка — снизу.");
+        HintChanged?.Invoke(editMagnifierSource ? Strings["MagnifierSourceHint"] : Strings["MagnifierMoveHint"]);
     }
     public void UpdateMagnifierZoom(bool recordUndo = true)
     {
@@ -45,7 +45,7 @@ internal sealed partial class EditorCanvas
         pending = new Annotation { Tool = EditorTool.Magnifier, Start = p, End = p, Color = Ink, Width = StrokeWidth, Magnification = MagnifierZoom };
         magnifierStage = MagnifierStage.Source; dragging = true; Capture = true;
         CropStateChanged?.Invoke();
-        HintChanged?.Invoke("Выделите исходный фрагмент, который нужно увеличить. Затем щёлкните в месте его размещения.");
+        HintChanged?.Invoke(Strings["MagnifierSelectHint"]);
     }
     private void PositionMagnifier(PointF p)
     {
@@ -68,7 +68,7 @@ internal sealed partial class EditorCanvas
             magnifierSample = MagnifierGeometry.Sample(preview, new((source.X - Document.Crop.X) * sx, (source.Y - Document.Crop.Y) * sy, source.Width * sx, source.Height * sy));
             MagnifierGeometry.SetZoom(pending, MagnifierZoom, Document.Crop, p);
             magnifierStage = MagnifierStage.Placement; dragging = false; Capture = false;
-            HintChanged?.Invoke("Щёлкните, где разместить увеличенный фрагмент. Esc — отменить. Масштаб и обводку можно изменить после размещения.");
+            HintChanged?.Invoke(Strings["MagnifierPlaceHint"]);
         }
         else if (magnifierStage == MagnifierStage.Placement)
         {
@@ -77,7 +77,7 @@ internal sealed partial class EditorCanvas
             magnifierSample?.Dispose(); magnifierSample = null;
             Selected = item; Document.Add(item); SelectionChanged?.Invoke();
             CropStateChanged?.Invoke();
-            HintChanged?.Invoke("Фрагмент добавлен. Масштаб и обводка — снизу; «Источник» позволяет изменить исходную область.");
+            HintChanged?.Invoke(Strings["MagnifierAddedHint"]);
         }
         Invalidate();
     }
@@ -103,7 +103,7 @@ internal sealed partial class EditorCanvas
         using var fill = new SolidBrush(Color.FromArgb(30, Theme.Accent)); g.FillRectangle(fill, tl.X, tl.Y, br.X - tl.X, br.Y - tl.Y);
         using var line = new Pen(Theme.Accent, 1) { DashStyle = DashStyle.Dash };
         g.DrawLine(line, ToScreen(MagnifierGeometry.Center(b)), ToScreen(MagnifierGeometry.Center(Selected.Bounds)));
-        TextRenderer.DrawText(g, "Источник", Font, new Point((int)tl.X, (int)tl.Y - Font.Height - 4), Theme.Accent);
+        TextRenderer.DrawText(g, Strings["Source"], Font, new Point((int)tl.X, (int)tl.Y - Font.Height - 4), Theme.Accent);
     }
     private void TransformMagnifier(Annotation item, Annotation original, float dx, float dy)
     {

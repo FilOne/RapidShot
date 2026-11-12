@@ -2,7 +2,7 @@ namespace RapidShot;
 
 internal sealed record CaptureDisplay(string DeviceName, Rectangle Bounds, bool Primary, int Number)
 {
-    public string Label => $"Экран {Number} — {Bounds.Width} × {Bounds.Height}" + (Primary ? " (основной)" : "");
+    internal string Label(UiText strings) => strings.Format("Display", Number, Bounds.Width, Bounds.Height) + (Primary ? strings["PrimaryDisplaySuffix"] : "");
 }
 
 internal sealed record CaptureChoice(string Label, bool Region, string? DeviceName = null)
@@ -21,25 +21,25 @@ internal static class CaptureTargets
 
     public static Rectangle ResolveBounds(IReadOnlyList<CaptureDisplay> displays, string? deviceName)
     {
-        if (displays.Count == 0) throw new InvalidOperationException("Нет доступных экранов для снимка.");
+        if (displays.Count == 0) throw new InvalidOperationException(UiText.Current["NoDisplays"]);
         if (!string.IsNullOrEmpty(deviceName))
             return displays.FirstOrDefault(x => string.Equals(x.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase))?.Bounds
-                ?? throw new InvalidOperationException("Выбранный экран отключён. Выберите другой экран в меню трея или настройках.");
+                ?? throw new InvalidOperationException(UiText.Current["DisplayUnavailable"]);
         return displays.Select(x => x.Bounds).Aggregate(Rectangle.Union);
     }
 
-    public static CaptureChoice[] Choices(IReadOnlyList<CaptureDisplay> displays, string? savedDevice)
+    public static CaptureChoice[] Choices(IReadOnlyList<CaptureDisplay> displays, string? savedDevice, UiText strings)
     {
-        var choices = new List<CaptureChoice> { new("Выделенную область", true), new("Все экраны целиком", false) };
-        choices.AddRange(displays.Select(x => new CaptureChoice(x.Label, false, x.DeviceName)));
+        var choices = new List<CaptureChoice> { new(strings["SelectedRegion"], true), new(strings["AllDisplays"], false) };
+        choices.AddRange(displays.Select(x => new CaptureChoice(x.Label(strings), false, x.DeviceName)));
         if (!string.IsNullOrEmpty(savedDevice) && !displays.Any(x => string.Equals(x.DeviceName, savedDevice, StringComparison.OrdinalIgnoreCase)))
-            choices.Add(new($"Отключённый экран ({savedDevice})", false, savedDevice));
+            choices.Add(new(strings.Format("DisconnectedDisplay", savedDevice), false, savedDevice));
         return choices.ToArray();
     }
 
     public static ToolStripMenuItem[] MenuItems(IReadOnlyList<CaptureDisplay> displays, Action<string> capture) => displays.Select(display =>
     {
-        var item = new ToolStripMenuItem(display.Label) { Tag = display.DeviceName, ToolTipText = $"{display.DeviceName} · X: {display.Bounds.X}, Y: {display.Bounds.Y}" };
+        var item = new ToolStripMenuItem(display.Label(UiText.Current)) { Tag = display.DeviceName, ToolTipText = $"{display.DeviceName} · X: {display.Bounds.X}, Y: {display.Bounds.Y}" };
         item.Click += (_, _) => capture(display.DeviceName); return item;
     }).ToArray();
 }

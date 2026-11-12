@@ -4,37 +4,36 @@ namespace RapidShot;
 
 internal sealed class TrayApplication : ApplicationContext
 {
-    private AppSettings settings = AppSettings.Load();
+    private AppSettings settings;
     private readonly NotifyIcon tray;
     private readonly HotkeyWindow hotkey = new();
     private readonly List<EditorForm> editors = [];
-    private readonly ToolStripMenuItem captureItem, captureScreenItem;
+    private readonly ToolStripMenuItem captureItem, captureScreenItem, captureAllItem, openImageItem, settingsItem, screenshotFolderItem, quitItem;
     private readonly AutostartService autostart = new();
     private readonly ToolStripMenuItem autostartItem;
     private SettingsDialog? settingsDialog;
     private bool capturing;
     private bool hotkeyRegistered;
-    public TrayApplication(string[] args)
+    private static UiText Strings => UiText.Current;
+
+    public TrayApplication(string[] args, AppSettings settings)
     {
+        this.settings = settings;
         var isAutostart = args.Contains("--autostart", StringComparer.OrdinalIgnoreCase);
         var menu = new ContextMenuStrip { ShowItemToolTips = true };
         Theme.Menu(menu);
-        captureItem = new("Снимок области", null, async (_, _) => await Capture(true));
-        menu.Items.Add(captureItem);
-        menu.Items.Add("Снимок всех экранов", null, async (_, _) => await Capture(false));
-        captureScreenItem = new("Снимок экрана"); menu.Items.Add(captureScreenItem);
+        captureItem = new("", null, async (_, _) => await Capture(true));
+        captureAllItem = new("", null, async (_, _) => await Capture(false));
+        captureScreenItem = new();
         menu.Opening += (_, _) => { UpdateScreens(); UpdateAutostart(); };
-        menu.Items.Add("Открыть изображение…", null, (_, _) => OpenImage());
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Настройки…", null, (_, _) => ShowSettings());
-        autostartItem = new("Запускать с Windows", null, (_, _) => ToggleAutostart()) { CheckOnClick = false, AccessibleName = "Запускать RapidShot с Windows" };
-        menu.Items.Add(autostartItem);
-        menu.Items.Add("Папка скриншотов", null, (_, _) => OpenFolder());
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Выход", null, (_, _) => Exit());
+        openImageItem = new("", null, (_, _) => OpenImage());
+        settingsItem = new("", null, (_, _) => ShowSettings());
+        autostartItem = new("", null, (_, _) => ToggleAutostart()) { CheckOnClick = false };
+        screenshotFolderItem = new("", null, (_, _) => OpenFolder());
+        quitItem = new("", null, (_, _) => Exit());
+        menu.Items.AddRange([captureItem, captureAllItem, captureScreenItem, openImageItem, new ToolStripSeparator(),
+            settingsItem, autostartItem, screenshotFolderItem, new ToolStripSeparator(), quitItem]);
         tray = new NotifyIcon { Icon = Theme.CreateIcon(), Text = "RapidShot", ContextMenuStrip = menu, Visible = true };
-        UpdateScreens();
-        UpdateAutostart();
         tray.DoubleClick += async (_, _) => await Capture(settings.CaptureRegion, settings.CaptureDeviceName);
         hotkey.Pressed += async () => await Capture(settings.CaptureRegion, settings.CaptureDeviceName);
         hotkeyRegistered = hotkey.Register(settings.Modifiers, settings.Key);
@@ -47,13 +46,13 @@ internal sealed class TrayApplication : ApplicationContext
             else if (args.Contains("--settings")) ShowSettings();
             if (hotkeyRegistered)
             {
-                if (!isAutostart) tray.ShowBalloonTip(4000, "RapidShot готов", $"Снимок: {settings.HotkeyLabel}. Настройки и выход — в меню значка.", ToolTipIcon.Info);
+                if (!isAutostart) tray.ShowBalloonTip(4000, Strings["RapidShotReady"], Strings.Format("TrayReadyHint", settings.HotkeyLabel), ToolTipIcon.Info);
             }
             else if (isAutostart)
-                tray.ShowBalloonTip(6000, "RapidShot — горячая клавиша занята", $"Не удалось зарегистрировать {settings.HotkeyLabel}. Выберите другое сочетание в настройках. Меню трея доступно.", ToolTipIcon.Warning);
+                tray.ShowBalloonTip(6000, Strings["HotkeyInUseTitle"], Strings.Format("HotkeyTrayWarning", settings.HotkeyLabel), ToolTipIcon.Warning);
             else
             {
-                MessageBox.Show($"Не удалось зарегистрировать {settings.HotkeyLabel}. Возможно, сочетание занято другой программой. Выберите другое сочетание в настройках. Снимки через меню трея доступны.", "RapidShot", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(Strings.Format("HotkeyWarning", settings.HotkeyLabel), "RapidShot", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 ShowSettings();
             }
         };
@@ -64,25 +63,35 @@ internal sealed class TrayApplication : ApplicationContext
         try
         {
             autostartItem.Checked = autostart.IsEnabled; autostartItem.Enabled = true;
-            autostartItem.ToolTipText = "Автоматически запускать RapidShot в трее после входа в Windows";
+            autostartItem.ToolTipText = Strings["AutostartHint"];
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
-            autostartItem.Enabled = false; autostartItem.ToolTipText = "Не удалось прочитать настройку автозапуска: " + ex.Message;
+            autostartItem.Enabled = false; autostartItem.ToolTipText = Strings["AutostartReadFailed"] + ex.Message;
         }
     }
     private void ToggleAutostart()
     {
         try { autostart.SetEnabled(!autostart.IsEnabled); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
-        { MessageBox.Show(ex.Message, "Не удалось изменить автозапуск", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        { MessageBox.Show(ex.Message, Strings["AutostartChangeFailed"], MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         finally { UpdateAutostart(); }
     }
     private void UpdateTray()
     {
         var text = $"RapidShot · {settings.HotkeyLabel}";
         tray.Text = text.Length > 63 ? "RapidShot" : text;
-        captureItem.Text = "Снимок области" + (settings.CaptureRegion ? $"    {settings.HotkeyLabel}" : "");
+        captureItem.Text = Strings["CaptureRegion"] + (settings.CaptureRegion ? $"    {settings.HotkeyLabel}" : "");
+        captureAllItem.Text = Strings["CaptureAllDisplays"];
+        captureScreenItem.Text = Strings["CaptureDisplay"];
+        openImageItem.Text = Strings["OpenImage"];
+        settingsItem.Text = Strings["SettingsMenu"];
+        autostartItem.Text = Strings["StartWithWindows"];
+        autostartItem.AccessibleName = Strings["StartWithWindowsName"];
+        screenshotFolderItem.Text = Strings["ScreenshotFolder"];
+        quitItem.Text = Strings["Quit"];
+        UpdateScreens();
+        UpdateAutostart();
     }
     private void UpdateScreens()
     {
@@ -113,7 +122,7 @@ internal sealed class TrayApplication : ApplicationContext
                 overlay.ShowDialog();
             }
         }
-        catch (Exception ex) { image?.Dispose(); image = null; MessageBox.Show(ex.Message, "Не удалось сделать снимок", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        catch (Exception ex) { image?.Dispose(); image = null; MessageBox.Show(ex.Message, Strings["CaptureFailed"], MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         finally
         {
             foreach (var editor in visible) if (!editor.IsDisposed) editor.Show();
@@ -133,10 +142,10 @@ internal sealed class TrayApplication : ApplicationContext
     }
     private void OpenImage()
     {
-        using var dialog = new OpenFileDialog { Filter = "Изображения|*.png;*.jpg;*.jpeg;*.bmp;*.gif", Title = "Открыть в RapidShot" };
+        using var dialog = new OpenFileDialog { Filter = Strings["OpenImageFilter"], Title = Strings["OpenImageTitle"] };
         if (dialog.ShowDialog() != DialogResult.OK) return;
         try { using var source = new Bitmap(dialog.FileName); ShowEditor(new Bitmap(source)); }
-        catch (Exception ex) { MessageBox.Show(ex.Message, "Не удалось открыть изображение", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        catch (Exception ex) { MessageBox.Show(ex.Message, Strings["OpenImageFailed"], MessageBoxButtons.OK, MessageBoxIcon.Warning); }
     }
     private void ShowSettings()
     {
@@ -147,14 +156,19 @@ internal sealed class TrayApplication : ApplicationContext
             using var dialog = new SettingsDialog(settings, candidate =>
             {
                 var changed = candidate.Modifiers != settings.Modifiers || candidate.Key != settings.Key;
-                if ((changed || !hotkeyRegistered) && !hotkey.Register(candidate.Modifiers, candidate.Key)) return "Сочетание занято или недоступно. Выберите другую клавишу.";
+                if ((changed || !hotkeyRegistered) && !hotkey.Register(candidate.Modifiers, candidate.Key)) return Strings["HotkeyUnavailable"];
                 try { candidate.Save(); }
                 catch (Exception ex)
                 {
                     if (changed) hotkey.Register(settings.Modifiers, settings.Key);
-                    return "Не удалось сохранить настройки: " + ex.Message;
+                    return Strings["SaveSettingsFailed"] + ex.Message;
                 }
-                settings = candidate; hotkeyRegistered = true; Theme.SetMode(settings.ThemeMode); UpdateTray(); return null;
+                settings = candidate;
+                hotkeyRegistered = true;
+                UiText.Current = UiText.For(settings.Language);
+                Theme.SetMode(settings.ThemeMode);
+                UpdateTray();
+                return null;
             });
             settingsDialog = dialog; dialog.ShowDialog();
         }
@@ -167,7 +181,7 @@ internal sealed class TrayApplication : ApplicationContext
             Directory.CreateDirectory(settings.SaveDirectory);
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(settings.SaveDirectory) { UseShellExecute = true });
         }
-        catch (Exception ex) { MessageBox.Show(ex.Message, "Папка скриншотов"); }
+        catch (Exception ex) { MessageBox.Show(ex.Message, Strings["ScreenshotFolder"]); }
     }
     private void Exit()
     {

@@ -18,7 +18,7 @@ public sealed class YapxClient : IDisposable
     }
     public async Task<UploadResult> UploadAsync(byte[] png, CancellationToken cancellation = default)
     {
-        if (png.Length > MaxBytes) throw new InvalidOperationException("Yapx: файл превышает гостевой лимит 3 МБ. Обрежьте снимок или сохраните его на диск.");
+        if (png.Length > MaxBytes) throw new InvalidOperationException(UiText.Current["YapxFileTooLarge"]);
         cancellation.ThrowIfCancellationRequested();
         await Send(HttpMethod.Get, "https://yapx.ru/upload", null, cancellation);
         using var create = new FormUrlEncodedContent([]);
@@ -40,8 +40,8 @@ public sealed class YapxClient : IDisposable
         request.Headers.Referrer = new Uri("https://yapx.ru/upload");
         if (method == HttpMethod.Post) { request.Headers.Add("X-Requested-With", "XMLHttpRequest"); request.Headers.Accept.Add(new("application/json")); }
         using var response = await http.SendAsync(request, cancellation);
-        if (response.StatusCode == HttpStatusCode.TooManyRequests) throw new InvalidOperationException("Yapx ограничил частоту загрузок. Повторите позже.");
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException($"Yapx вернул ошибку HTTP {(int)response.StatusCode}. Снимок остаётся в редакторе.");
+        if (response.StatusCode == HttpStatusCode.TooManyRequests) throw new InvalidOperationException(UiText.Current["YapxRateLimited"]);
+        if (!response.IsSuccessStatusCode) throw new InvalidOperationException(UiText.Current.Format("YapxHttpError", (int)response.StatusCode));
         return await response.Content.ReadAsStringAsync(cancellation);
     }
     private static JsonDocument ReadJson(string response)
@@ -49,7 +49,7 @@ public sealed class YapxClient : IDisposable
         try { return JsonDocument.Parse(response); }
         catch (JsonException) { throw Unexpected(); }
     }
-    private static InvalidOperationException Unexpected() => new("Yapx вернул неожиданный ответ. Сервис мог изменить загрузчик, временно недоступен или требует проверку в браузере.");
+    private static InvalidOperationException Unexpected() => new(UiText.Current["YapxUnexpectedResponse"]);
     private static string? Field(JsonElement element, string name) => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var field) && field.ValueKind is JsonValueKind.String or JsonValueKind.Number ? field.ToString() : null;
     private static bool ValidHash(string? value) => value != null && Regex.IsMatch(value, @"\A[A-Za-z0-9_-]{1,100}\z", RegexOptions.None, TimeSpan.FromSeconds(1));
     public static string? SafeUrl(string? value)
