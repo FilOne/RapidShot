@@ -212,6 +212,8 @@
   "AutostartHint": ["Автоматически запускать RapidShot в трее после входа в Windows","Start RapidShot in the tray automatically when you sign in to Windows","登录 Windows 后自动在系统托盘启动 RapidShot"],
   "AutostartReadFailed": ["Не удалось прочитать настройку автозапуска: ","Could not read the autostart setting: ","无法读取开机启动设置："],
   "AutostartChangeFailed": ["Не удалось изменить автозапуск","Could not change autostart","无法更改开机启动设置"],
+  "AutostartSaveFailed": ["Не удалось изменить автозапуск. {0}","Could not change autostart. {0}","无法更改开机启动设置。{0}"],
+  "AutostartRestoreFailed": ["Не удалось восстановить прежнюю настройку автозапуска. {0}","Could not restore the previous autostart setting. {0}","无法恢复原来的开机启动设置。{0}"],
   "CaptureFailed": ["Не удалось сделать снимок","Could not take a screenshot","无法截图"],
   "OpenImageFilter": ["Изображения|*.png;*.jpg;*.jpeg;*.bmp;*.gif","Images|*.png;*.jpg;*.jpeg;*.bmp;*.gif","图像|*.png;*.jpg;*.jpeg;*.bmp;*.gif"],
   "OpenImageTitle": ["Открыть в RapidShot","Open in RapidShot","在 RapidShot 中打开"],

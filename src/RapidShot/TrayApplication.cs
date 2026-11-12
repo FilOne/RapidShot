@@ -153,27 +153,58 @@ internal sealed class TrayApplication : ApplicationContext
         hotkey.Suspended = true;
         try
         {
-            using var dialog = new SettingsDialog(settings, candidate =>
-            {
-                var changed = candidate.Modifiers != settings.Modifiers || candidate.Key != settings.Key;
-                if ((changed || !hotkeyRegistered) && !hotkey.Register(candidate.Modifiers, candidate.Key)) return Strings["HotkeyUnavailable"];
-                try { candidate.Save(); }
-                catch (Exception ex)
-                {
-                    if (changed) hotkey.Register(settings.Modifiers, settings.Key);
-                    return Strings["SaveSettingsFailed"] + ex.Message;
-                }
-                settings = candidate;
-                hotkeyRegistered = true;
-                UiText.Current = UiText.For(settings.Language);
-                Theme.SetMode(settings.ThemeMode);
-                UpdateTray();
-                return null;
-            });
+            UpdateAutostart();
+            bool? startWithWindows = autostartItem.Enabled ? autostartItem.Checked : null;
+            using var dialog = new SettingsDialog(settings, startWithWindows, ApplySettings);
             settingsDialog = dialog; dialog.ShowDialog();
         }
         finally { settingsDialog = null; hotkey.Suspended = false; }
     }
+
+    private string? ApplySettings(AppSettings candidate, bool? autostartChange)
+    {
+        var hotkeyChanged = candidate.Modifiers != settings.Modifiers || candidate.Key != settings.Key;
+        if (hotkeyChanged || !hotkeyRegistered)
+        {
+            if (!hotkey.Register(candidate.Modifiers, candidate.Key)) return Strings["HotkeyUnavailable"];
+            hotkeyRegistered = true;
+        }
+
+        string? previousCommand = null;
+        var savingSettings = false;
+        try
+        {
+            if (autostartChange is bool enabled)
+            {
+                previousCommand = autostart.RegisteredCommand;
+                autostart.SetEnabled(enabled);
+            }
+            savingSettings = true;
+            candidate.Save();
+        }
+        catch (Exception ex)
+        {
+            if (hotkeyChanged) hotkeyRegistered = hotkey.Register(settings.Modifiers, settings.Key);
+            var error = savingSettings ? Strings["SaveSettingsFailed"] + ex.Message : Strings.Format("AutostartSaveFailed", ex.Message);
+            if (savingSettings && autostartChange.HasValue)
+            {
+                try { autostart.RegisteredCommand = previousCommand; }
+                catch (Exception restoreError) when (restoreError is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+                {
+                    error += Environment.NewLine + Strings.Format("AutostartRestoreFailed", restoreError.Message);
+                }
+            }
+            UpdateAutostart();
+            return error;
+        }
+
+        settings = candidate;
+        UiText.Current = UiText.For(settings.Language);
+        Theme.SetMode(settings.ThemeMode);
+        UpdateTray();
+        return null;
+    }
+
     private void OpenFolder()
     {
         try

@@ -6,28 +6,31 @@ internal sealed class AutostartService(string registryPath = AutostartService.Ru
 {
     internal const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string EntryName = "RapidShot";
-    internal bool IsEnabled
+    internal bool IsEnabled => !string.IsNullOrWhiteSpace(RegisteredCommand);
+
+    internal string? RegisteredCommand
     {
         get
         {
             using var key = Registry.CurrentUser.OpenSubKey(registryPath);
-            return key?.GetValue(EntryName) is string command && !string.IsNullOrWhiteSpace(command);
+            return key?.GetValue(EntryName, null, RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
+        }
+        set
+        {
+            if (value == null)
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(registryPath, writable: true);
+                key?.DeleteValue(EntryName, throwOnMissingValue: false);
+            }
+            else
+            {
+                using var key = Registry.CurrentUser.CreateSubKey(registryPath, writable: true);
+                key.SetValue(EntryName, value, RegistryValueKind.String);
+            }
         }
     }
-    internal void SetEnabled(bool enabled)
-    {
-        if (enabled)
-        {
-            var command = CreateCommand(Environment.ProcessPath ?? throw new IOException(UiText.Current["AutostartPathMissing"]));
-            using var key = Registry.CurrentUser.CreateSubKey(registryPath, writable: true);
-            key.SetValue(EntryName, command, RegistryValueKind.String);
-        }
-        else
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(registryPath, writable: true);
-            key?.DeleteValue(EntryName, throwOnMissingValue: false);
-        }
-    }
+    internal void SetEnabled(bool enabled) => RegisteredCommand = enabled
+        ? CreateCommand(Environment.ProcessPath ?? throw new IOException(UiText.Current["AutostartPathMissing"])) : null;
     internal static string CreateCommand(string executable)
     {
         if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase))

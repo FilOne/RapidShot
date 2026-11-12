@@ -4,20 +4,21 @@ internal sealed class SettingsDialog : Form
 {
     public AppSettings Result { get; private set; }
     private readonly TextBox shortcut;
-    private readonly CheckBox ctrl, alt, shift, win;
+    private readonly CheckBox ctrl, alt, shift, win, autostart;
     private readonly ComboBox key, mode, appearance, language;
     private readonly TextBox folder;
     private readonly Label feedback;
-    private readonly Func<AppSettings, string?> apply;
+    private readonly Func<AppSettings, bool?, string?> apply;
+    private readonly bool? initialAutostart;
     private readonly UiText Strings;
     private CancellationTokenSource? updateCheck;
-    public SettingsDialog(AppSettings current, Func<AppSettings, string?> apply, IReadOnlyList<CaptureDisplay>? displays = null)
+    public SettingsDialog(AppSettings current, bool? startWithWindows, Func<AppSettings, bool?, string?> apply, IReadOnlyList<CaptureDisplay>? displays = null)
     {
-        Result = current; this.apply = apply;
+        Result = current; this.apply = apply; initialAutostart = startWithWindows;
         Strings = UiText.For(current.Language);
-        Theme.Apply(this); Text = Strings["SettingsTitle"]; ClientSize = new(590, 610);
+        Theme.Apply(this); Text = Strings["SettingsTitle"]; ClientSize = new(590, 620);
         FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; MinimizeBox = false;
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 13 };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 14 };
         layout.Controls.Add(new Label { Text = Strings["SettingsHeading"], AutoSize = true, Font = new Font("Segoe UI", 17, FontStyle.Bold), Margin = new Padding(0, 0, 0, 15) });
         layout.Controls.Add(Theme.Label(Strings["CaptureHotkey"]));
         var modifiers = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
@@ -62,7 +63,14 @@ internal sealed class SettingsDialog : Form
         folderRow.Controls.Add(folder);
         folderRow.Controls.Add(Theme.Button(Strings["Browse"], (_, _) => { using var dialog = new FolderBrowserDialog { InitialDirectory = folder.Text }; if (dialog.ShowDialog(this) == DialogResult.OK) folder.Text = dialog.SelectedPath; }));
         layout.Controls.Add(folderRow);
-        layout.Controls.Add(new Label { Text = Strings["TrayHelp"], AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(4, 14, 4, 8) });
+        autostart = new CheckBox
+        {
+            Text = Strings["StartWithWindows"], AccessibleDescription = Strings["AutostartHint"], AutoSize = true,
+            CheckState = startWithWindows switch { true => CheckState.Checked, false => CheckState.Unchecked, null => CheckState.Indeterminate },
+            Enabled = startWithWindows.HasValue, Margin = new Padding(4, 8, 4, 0)
+        };
+        layout.Controls.Add(autostart);
+        layout.Controls.Add(new Label { Text = Strings["TrayHelp"], AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(4, 8, 4, 8) });
         layout.Controls.Add(CreateUpdateControls());
         feedback = new Label { AutoSize = true, MaximumSize = new(530, 0), ForeColor = Theme.Error }; layout.Controls.Add(feedback);
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
@@ -148,7 +156,8 @@ internal sealed class SettingsDialog : Form
                 CaptureDeviceName = choice.DeviceName, SaveDirectory = path, ThemeMode = (AppTheme)appearance.SelectedIndex,
                 Language = (AppLanguage)language.SelectedIndex
             };
-            var error = apply(settings);
+            bool? autostartChange = initialAutostart.HasValue && autostart.Checked != initialAutostart ? autostart.Checked : null;
+            var error = apply(settings, autostartChange);
             if (error != null) { feedback.Text = error; return; }
             Result = settings; DialogResult = DialogResult.OK; Close();
         }
